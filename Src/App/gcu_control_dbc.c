@@ -257,13 +257,8 @@ int tsmaster_control_pack(
     dst_p[3] |= pack_left_shift_u8(src_p->set_first_fix_freq_time_off, 6u, 0xc0u);
     dst_p[4] |= pack_right_shift_u8(src_p->set_first_fix_freq_time_off, 2u, 0x3fu);
     
-    /* set_second_rev_oilP_max: bit 38, 8 bits */
-    dst_p[4] |= pack_left_shift_u8(src_p->set_second_rev_oilP_max, 6u, 0xc0u);
-    dst_p[5] |= pack_right_shift_u8(src_p->set_second_rev_oilP_max, 2u, 0x3fu);
-    
-    /* set_second_rev_oilP_min: bit 48, 8 bits */
+    /* bypass_off: bit 46, 1 bit */
     dst_p[5] |= pack_left_shift_u8(src_p->bypass_off, 6u, 0x40u);
-    dst_p[6] |= pack_left_shift_u8(src_p->set_second_rev_oilP_min, 0u, 0xffu);
     
     return (8);
 }
@@ -300,13 +295,8 @@ int tsmaster_control_unpack(
     dst_p->set_first_fix_freq_time_off = unpack_right_shift_u8(src_p[3], 6u, 0xc0u);
     dst_p->set_first_fix_freq_time_off |= unpack_left_shift_u8(src_p[4], 2u, 0x3fu);
     
-    /* set_second_rev_oilP_max: bit 38, 8 bits */
-    dst_p->set_second_rev_oilP_max = unpack_right_shift_u8(src_p[4], 6u, 0xc0u);
-    dst_p->set_second_rev_oilP_max |= unpack_left_shift_u8(src_p[5], 2u, 0x3fu);
-    
-    /* set_second_rev_oilP_min: bit 48, 8 bits */
+    /* bypass_off: bit 46, 1 bit */
     dst_p->bypass_off = unpack_right_shift_u8(src_p[5], 6u, 0x40u);
-    dst_p->set_second_rev_oilP_min = unpack_right_shift_u8(src_p[6], 0u, 0xffu);
     
     return (0);
 }
@@ -330,11 +320,11 @@ int tsmaster_control2_pack(
     
     memset(&dst_p[0], 0, 8);
     
-    /* set_rev_compel_time_on: bit 0, 8 bits */
-    dst_p[0] |= pack_left_shift_u8(src_p->set_rev_compel_time_on, 0u, 0xffu);
-    
-    /* set_rev_compel_time_off: bit 8, 8 bits */
-    dst_p[1] |= pack_left_shift_u8(src_p->set_rev_compel_time_off, 0u, 0xffu);
+    /* set_second_manual: bit 0, 1 bit */
+    dst_p[0] |= pack_left_shift_u8(src_p->set_second_manual, 0u, 0x01u);
+
+    /* set_second_oilSuction_time: bit 8, 8 bits */
+    dst_p[1] |= pack_left_shift_u8(src_p->set_second_oilSuction_time, 0u, 0xffu);
     
     /* system_enable: bit 16, 1 bit */
     dst_p[2] |= pack_left_shift_u8(src_p->system_enable, 0u, 0x01u);
@@ -351,15 +341,8 @@ int tsmaster_control2_pack(
     /* set_bypass_ratio: bit 41, 6 bits */
     dst_p[5] |= pack_left_shift_u8(src_p->set_bypass_ratio, 1u, 0x7eu);
     
-    /* set_second_on_overtime: bit 47, 6 bits */
-    dst_p[5] |= pack_left_shift_u8(src_p->set_second_on_overtime, 7u, 0x80u);
-    dst_p[6] |= pack_right_shift_u8(src_p->set_second_on_overtime, 1u, 0x1fu);
-    
-    /* set_second_off_overtime: bit 53, 6 bits */
-    dst_p[6] |= pack_left_shift_u8(src_p->set_second_off_overtime, 5u, 0xe0u);
-    dst_p[7] |= pack_right_shift_u8(src_p->set_second_off_overtime, 3u, 0x07u);
-    
-    // 注意：bit 59-63 (剩余5位) 未使用，保持为0
+    /* set_second_workDone_time: bit 48, 8 bits */
+    dst_p[6] |= pack_left_shift_u8(src_p->set_second_workDone_time, 0u, 0xffu);
     
     return (8);
 }
@@ -377,11 +360,14 @@ int tsmaster_control2_unpack(
         return (-EINVAL);
     }
     
-    /* set_rev_compel_time_on: bit 0, 8 bits */
-    dst_p->set_rev_compel_time_on = unpack_right_shift_u8(src_p[0], 0u, 0xffu);
-    
-    /* set_rev_compel_time_off: bit 8, 8 bits */
-    dst_p->set_rev_compel_time_off = unpack_right_shift_u8(src_p[1], 0u, 0xffu);
+    /* set_second_workDone_time: bit 48, 8 bits */
+    dst_p->set_second_workDone_time = unpack_right_shift_u8(src_p[6], 0u, 0xffu);
+
+    /* set_second_oilSuction_time: bit 8, 8 bits */
+    dst_p->set_second_oilSuction_time = unpack_right_shift_u8(src_p[1], 0u, 0xffu);
+
+    /* set_second_manual: bit 0, 1 bit */
+    dst_p->set_second_manual = unpack_right_shift_u8(src_p[0], 0u, 0x01u);
     
     /* system_enable: bit 16, 1 bit */
     dst_p->system_enable = unpack_right_shift_u8(src_p[2], 0u, 0x01u);
@@ -397,16 +383,6 @@ int tsmaster_control2_unpack(
     
     /* set_bypass_ratio: bit 41, 6 bits */
     dst_p->set_bypass_ratio = unpack_right_shift_u8(src_p[5], 1u, 0x7eu);
-    
-    /* set_second_on_overtime: bit 47, 6 bits */
-    dst_p->set_second_on_overtime = unpack_right_shift_u8(src_p[5], 7u, 0x80u);
-    dst_p->set_second_on_overtime |= unpack_left_shift_u8(src_p[6], 1u, 0x1fu);
-    
-    /* set_second_off_overtime: bit 53, 6 bits */
-    dst_p->set_second_off_overtime = unpack_right_shift_u8(src_p[6], 5u, 0xe0u);
-    dst_p->set_second_off_overtime |= unpack_left_shift_u8(src_p[7], 3u, 0x07u);
-    
-    // 注意：bit 59-63 (剩余5位) 未使用，忽略这些位
     
     return (0);
 }
@@ -868,24 +844,6 @@ bool tsmaster_control_set_first_fix_freq_time_off_is_in_range(uint8_t value)
     return (value <= 100u);
 }
 
-uint8_t tsmaster_control_set_second_rev_oilP_max_encode(double value)
-{
-    // DBC定义范围: 0..20 MPa, Scale: 0.1, 自动限制到有效范围
-    if (value < 0.0) value = 0.0;
-    if (value > 20.0) value = 20.0;
-    return (uint8_t)(value / 0.1);
-}
-
-double tsmaster_control_set_second_rev_oilP_max_decode(uint8_t value)
-{
-    return ((double)value * 0.1);
-}
-
-bool tsmaster_control_set_second_rev_oilP_max_is_in_range(uint8_t value)
-{
-    return (value <= 200u);
-}
-
 uint8_t tsmaster_control_bypass_off_encode(double value)
 {
     return (uint8_t)(value);
@@ -901,60 +859,38 @@ bool tsmaster_control_bypass_off_is_in_range(uint8_t value)
     return (value <= 1u);
 }
 
-uint8_t tsmaster_control_set_second_rev_oilP_min_encode(double value)
-{
-    // DBC定义范围: 0..20 MPa, Scale: 0.1, 自动限制到有效范围
-    if (value < 0.0) value = 0.0;
-    if (value > 20.0) value = 20.0;
-    return (uint8_t)(value / 0.1);
-}
-
-double tsmaster_control_set_second_rev_oilP_min_decode(uint8_t value)
-{
-    return ((double)value * 0.1);
-}
-
-bool tsmaster_control_set_second_rev_oilP_min_is_in_range(uint8_t value)
-{
-    return (value <= 200u);
-}
-
 /* ========================================================================
  * tsmaster_control2 Encode/Decode Functions
  * ======================================================================== */
 
-uint8_t tsmaster_control2_set_rev_compel_time_on_encode(double value)
+uint8_t tsmaster_control2_set_second_manual_encode(double value)
 {
-    // DBC定义范围: 0..10 s, Scale: 0.1, 自动限制到有效范围
+    return (uint8_t)(value);
+}
+
+double tsmaster_control2_set_second_manual_decode(uint8_t value)
+{
+    return ((double)value);
+}
+
+bool tsmaster_control2_set_second_manual_is_in_range(uint8_t value)
+{
+    return (value <= 1u);
+}
+
+uint8_t tsmaster_control2_set_second_oilSuction_time_encode(double value)
+{
     if (value < 0.0) value = 0.0;
     if (value > 10.0) value = 10.0;
     return (uint8_t)(value / 0.1);
 }
 
-double tsmaster_control2_set_rev_compel_time_on_decode(uint8_t value)
+double tsmaster_control2_set_second_oilSuction_time_decode(uint8_t value)
 {
     return ((double)value * 0.1);
 }
 
-bool tsmaster_control2_set_rev_compel_time_on_is_in_range(uint8_t value)
-{
-    return (value <= 100u);
-}
-
-uint8_t tsmaster_control2_set_rev_compel_time_off_encode(double value)
-{
-    // DBC定义范围: 0..10 s, Scale: 0.1, 自动限制到有效范围
-    if (value < 0.0) value = 0.0;
-    if (value > 10.0) value = 10.0;
-    return (uint8_t)(value / 0.1);
-}
-
-double tsmaster_control2_set_rev_compel_time_off_decode(uint8_t value)
-{
-    return ((double)value * 0.1);
-}
-
-bool tsmaster_control2_set_rev_compel_time_off_is_in_range(uint8_t value)
+bool tsmaster_control2_set_second_oilSuction_time_is_in_range(uint8_t value)
 {
     return (value <= 100u);
 }
@@ -1034,38 +970,19 @@ bool tsmaster_control2_set_bypass_ratio_is_in_range(uint8_t value)
     return (value <= 50u);
 }
 
-uint8_t tsmaster_control2_set_second_on_overtime_encode(double value)
+uint8_t tsmaster_control2_set_second_workDone_time_encode(double value)
 {
-    // DBC定义范围: 0..10 s, Scale: 0.1, 自动限制到有效范围
     if (value < 0.0) value = 0.0;
     if (value > 10.0) value = 10.0;
     return (uint8_t)(value / 0.1);
 }
 
-double tsmaster_control2_set_second_on_overtime_decode(uint8_t value)
+double tsmaster_control2_set_second_workDone_time_decode(uint8_t value)
 {
     return ((double)value * 0.1);
 }
 
-bool tsmaster_control2_set_second_on_overtime_is_in_range(uint8_t value)
-{
-    return (value <= 100u);
-}
-
-uint8_t tsmaster_control2_set_second_off_overtime_encode(double value)
-{
-    // DBC定义范围: 0..10 s, Scale: 0.1, 自动限制到有效范围
-    if (value < 0.0) value = 0.0;
-    if (value > 10.0) value = 10.0;
-    return (uint8_t)(value / 0.1);
-}
-
-double tsmaster_control2_set_second_off_overtime_decode(uint8_t value)
-{
-    return ((double)value * 0.1);
-}
-
-bool tsmaster_control2_set_second_off_overtime_is_in_range(uint8_t value)
+bool tsmaster_control2_set_second_workDone_time_is_in_range(uint8_t value)
 {
     return (value <= 100u);
 }

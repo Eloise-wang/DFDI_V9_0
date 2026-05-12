@@ -163,24 +163,7 @@ typedef struct {
      */
     uint8_t set_first_fix_freq_time_off;
     
-    /**
-     * 第二阶段换向的最大油压值设置
-     * Range: 0..200 (0..20 MPa)
-     * Scale: 0.1
-     * Offset: 0
-     */
-    uint8_t set_second_rev_oilP_max;
-
-    
     uint8_t bypass_off;
-    
-    /**
-     * 第二阶段换向的最小油压值设置
-     * Range: 0..200 (0..20 MPa)
-     * Scale: 0.1
-     * Offset: 0
-     */
-    uint8_t set_second_rev_oilP_min;
 } tsmaster_control_t;
 
 /**
@@ -190,20 +173,20 @@ typedef struct {
  */
 typedef struct {
     /**
-     * 第二阶段强制换向开启时间
-     * Range: 0..100 (0..10 s)
-     * Scale: 0.1
+     * 第二阶段手动模式
+     * Range: 0..1
+     * Scale: 1
      * Offset: 0
      */
-    uint8_t set_rev_compel_time_on;
-    
+    uint8_t set_second_manual;
+
     /**
-     * 第二阶段强制换向关闭时间
+     * 第二阶段吸油时间
      * Range: 0..100 (0..10 s)
      * Scale: 0.1
      * Offset: 0
      */
-    uint8_t set_rev_compel_time_off;
+    uint8_t set_second_oilSuction_time;
     
     /**
      * 系统开关
@@ -238,22 +221,12 @@ typedef struct {
     uint8_t set_bypass_ratio;
     
     /**
-     * 第二阶段换向开启超时
+     * 第二阶段做功时间
      * Range: 0..100 (0..10 s)
      * Scale: 0.1
      * Offset: 0
      */
-    uint8_t set_second_on_overtime;
-    
-    /**
-     * 第二阶段换向关闭超时
-     * Range: 0..100 (0..10 s)
-     * Scale: 0.1
-     * Offset: 0
-     */
-    uint8_t set_second_off_overtime;
-    
-    // 注意：bit 63 (剩余1位) 未使用，预留未来扩展
+    uint8_t set_second_workDone_time;
 } tsmaster_control2_t;
 
 /* ========================================================================
@@ -410,26 +383,18 @@ uint8_t tsmaster_control_set_first_fix_freq_time_off_encode(double value);
 double tsmaster_control_set_first_fix_freq_time_off_decode(uint8_t value);
 bool tsmaster_control_set_first_fix_freq_time_off_is_in_range(uint8_t value);
 
-uint8_t tsmaster_control_set_second_rev_oilP_max_encode(double value);
-double tsmaster_control_set_second_rev_oilP_max_decode(uint8_t value);
-bool tsmaster_control_set_second_rev_oilP_max_is_in_range(uint8_t value);
-
 uint8_t tsmaster_control_bypass_off_encode(double value);
 double tsmaster_control_bypass_off_decode(uint8_t value);
 bool tsmaster_control_bypass_off_is_in_range(uint8_t value);
 
-uint8_t tsmaster_control_set_second_rev_oilP_min_encode(double value);
-double tsmaster_control_set_second_rev_oilP_min_decode(uint8_t value);
-bool tsmaster_control_set_second_rev_oilP_min_is_in_range(uint8_t value);
-
 /* tsmaster_control2 encode/decode functions */
-uint8_t tsmaster_control2_set_rev_compel_time_on_encode(double value);
-double tsmaster_control2_set_rev_compel_time_on_decode(uint8_t value);
-bool tsmaster_control2_set_rev_compel_time_on_is_in_range(uint8_t value);
+uint8_t tsmaster_control2_set_second_manual_encode(double value);
+double tsmaster_control2_set_second_manual_decode(uint8_t value);
+bool tsmaster_control2_set_second_manual_is_in_range(uint8_t value);
 
-uint8_t tsmaster_control2_set_rev_compel_time_off_encode(double value);
-double tsmaster_control2_set_rev_compel_time_off_decode(uint8_t value);
-bool tsmaster_control2_set_rev_compel_time_off_is_in_range(uint8_t value);
+uint8_t tsmaster_control2_set_second_oilSuction_time_encode(double value);
+double tsmaster_control2_set_second_oilSuction_time_decode(uint8_t value);
+bool tsmaster_control2_set_second_oilSuction_time_is_in_range(uint8_t value);
 
 uint8_t tsmaster_control2_system_enable_encode(double value);
 double tsmaster_control2_system_enable_decode(uint8_t value);
@@ -447,13 +412,9 @@ uint8_t tsmaster_control2_set_bypass_ratio_encode(double value);
 double tsmaster_control2_set_bypass_ratio_decode(uint8_t value);
 bool tsmaster_control2_set_bypass_ratio_is_in_range(uint8_t value);
 
-uint8_t tsmaster_control2_set_second_on_overtime_encode(double value);
-double tsmaster_control2_set_second_on_overtime_decode(uint8_t value);
-bool tsmaster_control2_set_second_on_overtime_is_in_range(uint8_t value);
-
-uint8_t tsmaster_control2_set_second_off_overtime_encode(double value);
-double tsmaster_control2_set_second_off_overtime_decode(uint8_t value);
-bool tsmaster_control2_set_second_off_overtime_is_in_range(uint8_t value);
+uint8_t tsmaster_control2_set_second_workDone_time_encode(double value);
+double tsmaster_control2_set_second_workDone_time_decode(uint8_t value);
+bool tsmaster_control2_set_second_workDone_time_is_in_range(uint8_t value);
 
 #ifdef __cplusplus
 }

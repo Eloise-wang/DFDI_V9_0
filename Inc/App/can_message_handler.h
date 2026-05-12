@@ -41,11 +41,10 @@ typedef struct {
     // 旁通阀控制参数
     double set_bypass_ratio;                     // 旁通阀比例（0..50%，从 tsmaster_control2.set_bypass_ratio）
     
-    // 第二阶段换向参数
-    double set_second_on_overtime;               // 第二阶段换向开启超时（0..10s，从 tsmaster_control2.set_second_on_overtime）
-    double set_second_off_overtime;              // 第二阶段换向关闭超时（0..10s，从 tsmaster_control2.set_second_off_overtime）
-    double set_rev_compel_time_on;               // 第二阶段强制换向开启时间（0..10s，从 tsmaster_control2.set_rev_compel_time_on）
-    double set_rev_compel_time_off;              // 第二阶段强制换向关闭时间（0..10s，从 tsmaster_control2.set_rev_compel_time_off）
+    // 第二阶段参数
+    bool   set_second_manual;                    // 第二阶段手动模式（从 tsmaster_control2.set_second_manual）
+    double set_second_oilSuction_time;           // 第二阶段吸油时间（从 tsmaster_control2.set_second_oilSuction_time）
+    double set_second_workDone_time;             // 第二阶段工作完成时间（从 tsmaster_control2.set_second_workDone_time）
     
     // 风冷器控制参数
     double set_cooler_temp_on;                   // 风冷器开启温度阈值（-40..80°C，从 tsmaster_control2.set_cooler_temperature_on）
@@ -63,9 +62,6 @@ typedef struct {
     double set_first_fix_freq_time_on;           // 第一阶段换向阀固定频率设置开启时常（0..10s，从 tsmaster_control.set_first_fix_freq_time_on）
     double set_first_fix_freq_time_off;          // 第一阶段换向阀固定频率设置关闭时常（0..10s，从 tsmaster_control.set_first_fix_freq_time_off）
     
-    // 第二阶段换向参数
-    double set_second_rev_oilP_max;              // 第二阶段换向的最大油压值设置（0..20MPa，从 tsmaster_control.set_second_rev_oilP_max）
-    double set_second_rev_oilP_min;               // 第二阶段换向的最小油压值设置（0..20MPa，从 tsmaster_control.set_second_rev_oilP_min）
     bool bypass_off;                             // 旁通阀关闭开关（从 tsmaster_control.bypass_off）
 } pc_parameter_config_t;
 

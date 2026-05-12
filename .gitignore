@@ -53,3 +53,11 @@ dkms.conf
 
 # debug information files
 *.dwo
+
+# Keil MDK 用户配置文件
+*.uvguix.*
+
+*.crf
+*.bin
+*.htm
+*.dep

@@ -439,14 +439,12 @@ void Debug_Log_CANReceivedParameters(const pc_parameter_config_t *config)
         (last_config.set_rev_start_oilP_min != config->set_rev_start_oilP_min) ||
         (last_config.set_first_fix_freq_time_on != config->set_first_fix_freq_time_on) ||
         (last_config.set_first_fix_freq_time_off != config->set_first_fix_freq_time_off) ||
-        (last_config.set_second_rev_oilP_max != config->set_second_rev_oilP_max) ||
-        (last_config.set_second_rev_oilP_min != config->set_second_rev_oilP_min) ||
-        (last_config.set_second_on_overtime != config->set_second_on_overtime) ||
-        (last_config.set_second_off_overtime != config->set_second_off_overtime) ||
-        (last_config.set_rev_compel_time_on != config->set_rev_compel_time_on) ||
-        (last_config.set_rev_compel_time_off != config->set_rev_compel_time_off) ||
+        (last_config.set_second_manual != config->set_second_manual) ||
+        (last_config.set_second_oilSuction_time != config->set_second_oilSuction_time) ||
+        (last_config.set_second_workDone_time != config->set_second_workDone_time) ||
         (last_config.set_cooler_temp_on != config->set_cooler_temp_on) ||
-        (last_config.set_cooler_temp_off != config->set_cooler_temp_off);
+        (last_config.set_cooler_temp_off != config->set_cooler_temp_off) ||
+        (last_config.bypass_off != config->bypass_off);
     
     if (params_changed) {
         Debug_Log("\r\n=== TSMaster Parameters Received ===\r\n");
@@ -457,12 +455,10 @@ void Debug_Log_CANReceivedParameters(const pc_parameter_config_t *config)
         Debug_Log("Rev Start OilP Min: %.2f MPa\r\n", config->set_rev_start_oilP_min);
         Debug_Log("Phase1 Time ON: %.2f s\r\n", config->set_first_fix_freq_time_on);
         Debug_Log("Phase1 Time OFF: %.2f s\r\n", config->set_first_fix_freq_time_off);
-        Debug_Log("Phase2 OilP Max: %.2f MPa\r\n", config->set_second_rev_oilP_max);
-        Debug_Log("Phase2 OilP Min: %.2f MPa\r\n", config->set_second_rev_oilP_min);
-        Debug_Log("Phase2 ON Overtime: %.2f s\r\n", config->set_second_on_overtime);
-        Debug_Log("Phase2 OFF Overtime: %.2f s\r\n", config->set_second_off_overtime);
-        Debug_Log("Rev Compel Time ON: %.2f s\r\n", config->set_rev_compel_time_on);
-        Debug_Log("Rev Compel Time OFF: %.2f s\r\n", config->set_rev_compel_time_off);
+        Debug_Log("Bypass Off: %s\r\n", config->bypass_off ? "YES" : "NO");
+        Debug_Log("Phase2 Manual: %s\r\n", config->set_second_manual ? "YES" : "NO");
+        Debug_Log("Phase2 OilSuction Time: %.2f s\r\n", config->set_second_oilSuction_time);
+        Debug_Log("Phase2 WorkDone Time: %.2f s\r\n", config->set_second_workDone_time);
         Debug_Log("Cooler Temp ON: %.1f°C\r\n", config->set_cooler_temp_on);
         Debug_Log("Cooler Temp OFF: %.1f°C\r\n", config->set_cooler_temp_off);
         Debug_Log("=====================================\r\n\r\n");

@@ -70,13 +70,10 @@ typedef struct {
     float set_first_fix_freq_time_on;           // 开启持续时间
     float set_first_fix_freq_time_off;          // 关闭持续时间
     
-    /* 第二阶段参数（压力控制） */
-    float set_second_rev_oilP_max;              // 关阀压力阈值 (N3)
-    float set_second_rev_oilP_min;              // 开阀压力阈值 (N4)
-	float set_second_on_overtime;        				// 开启超时
-    float set_second_off_overtime;       				// 关闭超时
-    float set_rev_compel_time_on;        				// 强制开启时间
-    float set_rev_compel_time_off;       				// 强制关闭时间
+    /* 第二阶段参数 */
+    bool  set_second_manual;
+    float set_second_oilSuction_time;
+    float set_second_workDone_time;
     
     /* 风冷器参数 */
     float set_cooler_temperature_on;            // 开启温度 (W1)

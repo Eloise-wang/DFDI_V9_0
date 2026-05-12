@@ -83,8 +83,6 @@ void CAN_MessageHandler_RxCallback(uint32_t msg_id, const uint8_t* data, uint8_t
             g_pc_parameters.set_rev_start_oilP_min = tsmaster_control_set_rev_start_oilP_min_decode(ctrl_msg.set_rev_start_oilP_min);
             g_pc_parameters.set_first_fix_freq_time_on = tsmaster_control_set_first_fix_freq_time_on_decode(ctrl_msg.set_first_fix_freq_time_on);
             g_pc_parameters.set_first_fix_freq_time_off = tsmaster_control_set_first_fix_freq_time_off_decode(ctrl_msg.set_first_fix_freq_time_off);
-            g_pc_parameters.set_second_rev_oilP_max = tsmaster_control_set_second_rev_oilP_max_decode(ctrl_msg.set_second_rev_oilP_max);
-            g_pc_parameters.set_second_rev_oilP_min = tsmaster_control_set_second_rev_oilP_min_decode(ctrl_msg.set_second_rev_oilP_min);
             g_pc_parameters.bypass_off = (ctrl_msg.bypass_off != 0u);
             
             // 打印接收到的参数
@@ -99,12 +97,9 @@ void CAN_MessageHandler_RxCallback(uint32_t msg_id, const uint8_t* data, uint8_t
             control_params.set_rev_start_oilP_min = (float)g_pc_parameters.set_rev_start_oilP_min;
             control_params.set_first_fix_freq_time_on = (float)g_pc_parameters.set_first_fix_freq_time_on;
             control_params.set_first_fix_freq_time_off = (float)g_pc_parameters.set_first_fix_freq_time_off;
-            control_params.set_second_rev_oilP_max = (float)g_pc_parameters.set_second_rev_oilP_max;
-            control_params.set_second_rev_oilP_min = (float)g_pc_parameters.set_second_rev_oilP_min;
-            control_params.set_second_on_overtime = (float)g_pc_parameters.set_second_on_overtime;
-            control_params.set_second_off_overtime = (float)g_pc_parameters.set_second_off_overtime;
-            control_params.set_rev_compel_time_on = (float)g_pc_parameters.set_rev_compel_time_on;
-            control_params.set_rev_compel_time_off = (float)g_pc_parameters.set_rev_compel_time_off;
+            control_params.set_second_workDone_time = (float)g_pc_parameters.set_second_workDone_time;
+            control_params.set_second_oilSuction_time = (float)g_pc_parameters.set_second_oilSuction_time;
+            control_params.set_second_manual = g_pc_parameters.set_second_manual;
             control_params.set_cooler_temperature_on = (float)g_pc_parameters.set_cooler_temp_on;
             control_params.set_cooler_temperature_off = (float)g_pc_parameters.set_cooler_temp_off;
             control_params.bypass_off = g_pc_parameters.bypass_off;
@@ -145,10 +140,13 @@ void CAN_MessageHandler_RxCallback(uint32_t msg_id, const uint8_t* data, uint8_t
                 if (g_pc_parameters.set_bypass_ratio < 0.0) g_pc_parameters.set_bypass_ratio = 0.0;
                 if (g_pc_parameters.set_bypass_ratio > 50.0) g_pc_parameters.set_bypass_ratio = 50.0;
                 
-                g_pc_parameters.set_second_on_overtime = tsmaster_control2_set_second_on_overtime_decode(ctrl2_msg.set_second_on_overtime);
-                g_pc_parameters.set_second_off_overtime = tsmaster_control2_set_second_off_overtime_decode(ctrl2_msg.set_second_off_overtime);
-                g_pc_parameters.set_rev_compel_time_on = tsmaster_control2_set_rev_compel_time_on_decode(ctrl2_msg.set_rev_compel_time_on);
-                g_pc_parameters.set_rev_compel_time_off = tsmaster_control2_set_rev_compel_time_off_decode(ctrl2_msg.set_rev_compel_time_off);
+                g_pc_parameters.set_second_manual = (tsmaster_control2_set_second_manual_decode(ctrl2_msg.set_second_manual) != 0.0);
+                g_pc_parameters.set_second_oilSuction_time = tsmaster_control2_set_second_oilSuction_time_decode(ctrl2_msg.set_second_oilSuction_time);
+                g_pc_parameters.set_second_workDone_time = tsmaster_control2_set_second_workDone_time_decode(ctrl2_msg.set_second_workDone_time);
+                if (g_pc_parameters.set_second_oilSuction_time < 0.0) g_pc_parameters.set_second_oilSuction_time = 0.0;
+                if (g_pc_parameters.set_second_oilSuction_time > 10.0) g_pc_parameters.set_second_oilSuction_time = 10.0;
+                if (g_pc_parameters.set_second_workDone_time < 0.0) g_pc_parameters.set_second_workDone_time = 0.0;
+                if (g_pc_parameters.set_second_workDone_time > 10.0) g_pc_parameters.set_second_workDone_time = 10.0;
                 
                 g_pc_parameters.set_cooler_temp_on = tsmaster_control2_set_cooler_temperature_on_decode(ctrl2_msg.set_cooler_temperature_on);
                 g_pc_parameters.set_cooler_temp_off = tsmaster_control2_set_cooler_temperature_off_decode(ctrl2_msg.set_cooler_temperature_off);
@@ -165,12 +163,9 @@ void CAN_MessageHandler_RxCallback(uint32_t msg_id, const uint8_t* data, uint8_t
                 control_params.set_rev_start_oilP_min = (float)g_pc_parameters.set_rev_start_oilP_min;
                 control_params.set_first_fix_freq_time_on = (float)g_pc_parameters.set_first_fix_freq_time_on;
                 control_params.set_first_fix_freq_time_off = (float)g_pc_parameters.set_first_fix_freq_time_off;
-                control_params.set_second_rev_oilP_max = (float)g_pc_parameters.set_second_rev_oilP_max;
-                control_params.set_second_rev_oilP_min = (float)g_pc_parameters.set_second_rev_oilP_min;
-                control_params.set_second_on_overtime = (float)g_pc_parameters.set_second_on_overtime;
-                control_params.set_second_off_overtime = (float)g_pc_parameters.set_second_off_overtime;
-                control_params.set_rev_compel_time_on = (float)g_pc_parameters.set_rev_compel_time_on;
-                control_params.set_rev_compel_time_off = (float)g_pc_parameters.set_rev_compel_time_off;
+                control_params.set_second_workDone_time = (float)g_pc_parameters.set_second_workDone_time;
+                control_params.set_second_oilSuction_time = (float)g_pc_parameters.set_second_oilSuction_time;
+                control_params.set_second_manual = g_pc_parameters.set_second_manual;
                 control_params.set_cooler_temperature_on = (float)g_pc_parameters.set_cooler_temp_on;
                 control_params.set_cooler_temperature_off = (float)g_pc_parameters.set_cooler_temp_off;
                 control_params.bypass_off = g_pc_parameters.bypass_off;

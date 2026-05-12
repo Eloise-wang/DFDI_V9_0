@@ -427,8 +427,9 @@ void HydraulicControl_Init(void)
     g_control_state.params.set_rev_start_oilP_min = 0.9f;
     g_control_state.params.set_first_fix_freq_time_on = 1.0f;
     g_control_state.params.set_first_fix_freq_time_off = 1.0f;
-    g_control_state.params.set_second_rev_oilP_max = 11.5f;
-    g_control_state.params.set_second_rev_oilP_min = 4.5f;
+    g_control_state.params.set_second_manual = false;
+    g_control_state.params.set_second_oilSuction_time = 0.0f;
+    g_control_state.params.set_second_workDone_time = 0.0f;
     g_control_state.params.set_cooler_temperature_on = 55.0f;
     g_control_state.params.set_cooler_temperature_off = 50.0f;
 }
