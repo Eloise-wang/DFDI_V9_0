@@ -1,0 +1,169 @@
+/* Copyright Statement:
+ *
+ * This software/firmware and related documentation ("AutoChips Software") are
+ * protected under relevant copyright laws. The information contained herein is
+ * confidential and proprietary to AutoChips Inc. and/or its licensors. Without
+ * the prior written permission of AutoChips inc. and/or its licensors, any
+ * reproduction, modification, use or disclosure of AutoChips Software, and
+ * information contained herein, in whole or in part, shall be strictly
+ * prohibited.
+ *
+ * AutoChips Inc. (C) 2021. All rights reserved.
+ *
+ * BY OPENING THIS FILE, RECEIVER HEREBY UNEQUIVOCALLY ACKNOWLEDGES AND AGREES
+ * THAT THE SOFTWARE/FIRMWARE AND ITS DOCUMENTATIONS ("AUTOCHIPS SOFTWARE")
+ * RECEIVED FROM AUTOCHIPS AND/OR ITS REPRESENTATIVES ARE PROVIDED TO RECEIVER
+ * ON AN "AS-IS" BASIS ONLY. AUTOCHIPS EXPRESSLY DISCLAIMS ANY AND ALL
+ * WARRANTIES, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE IMPLIED
+ * WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE OR
+ * NONINFRINGEMENT. NEITHER DOES AUTOCHIPS PROVIDE ANY WARRANTY WHATSOEVER WITH
+ * RESPECT TO THE SOFTWARE OF ANY THIRD PARTY WHICH MAY BE USED BY,
+ * INCORPORATED IN, OR SUPPLIED WITH THE AUTOCHIPS SOFTWARE, AND RECEIVER AGREES
+ * TO LOOK ONLY TO SUCH THIRD PARTY FOR ANY WARRANTY CLAIM RELATING THERETO.
+ * RECEIVER EXPRESSLY ACKNOWLEDGES THAT IT IS RECEIVER'S SOLE RESPONSIBILITY TO
+ * OBTAIN FROM ANY THIRD PARTY ALL PROPER LICENSES CONTAINED IN AUTOCHIPS
+ * SOFTWARE. AUTOCHIPS SHALL ALSO NOT BE RESPONSIBLE FOR ANY AUTOCHIPS SOFTWARE
+ * RELEASES MADE TO RECEIVER'S SPECIFICATION OR TO CONFORM TO A PARTICULAR
+ * STANDARD OR OPEN FORUM. RECEIVER'S SOLE AND EXCLUSIVE REMEDY AND AUTOCHIPS'S
+ * ENTIRE AND CUMULATIVE LIABILITY WITH RESPECT TO THE AUTOCHIPS SOFTWARE
+ * RELEASED HEREUNDER WILL BE, AT AUTOCHIPS'S OPTION, TO REVISE OR REPLACE THE
+ * AUTOCHIPS SOFTWARE AT ISSUE, OR REFUND ANY SOFTWARE LICENSE FEES OR SERVICE
+ * CHARGE PAID BY RECEIVER TO AUTOCHIPS FOR SUCH AUTOCHIPS SOFTWARE AT ISSUE.
+ */
+
+/*!
+ * @file smu_hw.c
+ *
+ * @brief This file provides smu integration functions.
+ *
+ */
+
+/* ===========================================  Includes  =========================================== */
+#include "smu_hw.h"
+
+/* ============================================  Define  ============================================ */
+#define SMU_REG_UNLOCK_VALUE1    (0xA5UL)
+#define SMU_REG_UNLOCK_VALUE2    (0x5AUL)
+
+/* ===========================================  Typedef  ============================================ */
+
+/* ==========================================  Variables  =========================================== */
+
+/* ====================================  Functions declaration  ===================================== */
+
+/* =====================================  Functions definition  ===================================== */
+/*!
+ * @brief Init SMU module.
+ *
+ * @param[in] none
+ * @return none
+ */
+void SMU_Init(void)
+{
+    /* single point fault reset disable */
+    SMU->SFRSTEN = 0U;
+    /* latent point fault reset disable */
+    SMU->LFRSTEN = 0U;
+}
+
+/*!
+ * @brief Single point fault register access permission unlock.
+ *
+ * @param[in] none
+ * @return none
+ */
+void SMU_SPFaultRegUnlock(void)
+{
+    SMU->LKSEQ0 = SMU_REG_UNLOCK_VALUE1;
+    SMU->LKSEQ0 = SMU_REG_UNLOCK_VALUE2;
+}
+
+/*!
+ * @brief Latent fault register access permission unlock.
+ *
+ * @param[in] none
+ * @return none
+ */
+void SMU_LatentFaultRegUnlock(void)
+{
+    SMU->LKSEQ1 = SMU_REG_UNLOCK_VALUE2;
+    SMU->LKSEQ1 = SMU_REG_UNLOCK_VALUE1;
+}
+
+/*!
+ * @brief Enable single point fault channel reset function.
+ *
+ * @param[in] channel: single fault channel
+ * @param[in] enable: enable or disble single fault channel reset function
+ * @return none
+ */
+void SMU_SPFaultResetEnable(single_fault_channel_t channel, bool enable)
+{
+    if (enable)
+    {
+        SMU->SFRSTEN |= (uint32_t)(1U << (uint32_t)channel);
+    }
+    else
+    {
+        SMU->SFRSTEN &= ~(uint32_t)(1U << (uint32_t)channel);
+    }
+}
+
+/*!
+ * @brief  enable latent fault channel reset function.
+ *
+ * @param[in] channel: latent fault channel
+ * @param[in] enable: enable or disble latent fault channel reset function
+ * @return none
+ */
+void SMU_LatentFaultResetEnable(latent_fault_channel_t channel, bool enable)
+{
+    if (enable)
+    {
+        SMU->LFRSTEN |= (uint32_t)(1U << (uint32_t)channel);
+    }
+    else
+    {
+        SMU->LFRSTEN &= ~(uint32_t)(1U << (uint32_t)channel);
+    }
+}
+
+/*!
+ * @brief Enable software single point fault channel function.
+ *
+ * @param[in] channel: software single point fault channel
+ * @param[in] enable: enable or disble software single point fault channel function
+ * @return none
+ */
+void SMU_SetSoftwareSPFaultEn(single_fault_channel_t channel, bool enable)
+{
+    if (enable)
+    {
+        SMU->SWSFE |= (uint32_t)(1U << (uint32_t)channel);
+    }
+    else
+    {
+        SMU->SWSFE &= ~(uint32_t)(1U << (uint32_t)channel);
+    }
+}
+
+/*!
+ * @brief Enable software latent fault channel function.
+ *
+ * @param[in] channel: software latent fault channel
+ * @param[in] enable: enable or disble software latent fault channel function
+ * @return none
+ */
+void SMU_SetSoftwareLatentFaultEn(latent_fault_channel_t channel, bool enable)
+{
+    if (enable)
+    {
+        SMU->SWLFE |= (uint32_t)(1U << (uint32_t)channel);
+    }
+    else
+    {
+        SMU->SWLFE &= ~(uint32_t)(1U << (uint32_t)channel);
+    }
+}
+
+/* =============================================  EOF  ============================================== */
