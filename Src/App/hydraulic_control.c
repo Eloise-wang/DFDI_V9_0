@@ -307,6 +307,97 @@ static void ProcessReversalValvePhase2(float display_lng_pressure)
     if (g_control_state.system_state != SYSTEM_STATE_REV_PHASE2) {
         return;
     }
+
+    uint32_t current_time = GetCurrentTimeMs();
+    bool is_manual = g_control_state.params.set_second_manual;
+
+    // 1. 模式切换检测与参数同步
+    if (is_manual != g_control_state.phase2_prev_manual_mode) {
+        if (!is_manual) {
+            // 手动 -> 自动
+            // 将当前的开启/关闭时间作为自动模式的起始参考值
+            // 如果刚从一阶段进入二阶段，则已经初始化过，这里是运行过程中的模式切换
+            g_control_state.phase2_auto_current_time_on = g_control_state.params.set_second_workDone_time;
+            g_control_state.phase2_auto_current_time_off = g_control_state.params.set_second_oilSuction_time;
+            g_control_state.phase2_auto_last_adjust_time = current_time;
+            Debug_Log("Phase 2: Switched to AUTO mode. Initial T_on=%.1fs, T_off=%.1fs", 
+                      g_control_state.phase2_auto_current_time_on, g_control_state.phase2_auto_current_time_off);
+        } else {
+            // 自动 -> 手动
+            Debug_Log("Phase 2: Switched to MANUAL mode. Using user params: T_on=%.1fs, T_off=%.1fs", 
+                      g_control_state.params.set_second_workDone_time, g_control_state.params.set_second_oilSuction_time);
+        }
+        g_control_state.phase2_prev_manual_mode = is_manual;
+    }
+
+    float target_time_on;
+    float target_time_off;
+
+    // 2. 模式逻辑处理
+    if (is_manual) {
+        // 手动模式：直接使用用户输入的参数
+        target_time_on = g_control_state.params.set_second_workDone_time;
+        target_time_off = g_control_state.params.set_second_oilSuction_time;
+        // 旁通阀开度在 HydraulicControl_Process 中根据 set_bypass_ratio 同步
+    } else {
+        // 自动模式：根据罐压实时调整
+        // 当罐压在 30±1.5MPa 内，停止调整（维持现状）
+        // 当罐压 < 28.5MPa，增加动力，提高频率
+        if (current_time - g_control_state.phase2_auto_last_adjust_time >= 1000) {
+            g_control_state.phase2_auto_last_adjust_time = current_time;
+
+            if (display_lng_pressure < 28.5f) {
+                // 罐压呈下降趋势，需要增加做功
+                
+                // A. 旁通阀开度调整（增加动力）：步长 2%
+                g_control_state.current_bypass_duty -= 2.0f;
+                if (g_control_state.current_bypass_duty < 0.0f) {
+                    g_control_state.current_bypass_duty = 0.0f;
+                }
+                ValveControl_SetBypassValve(g_control_state.current_bypass_duty);
+
+                // B. 换向阀时间调整（提高频率）：缩短开启和关闭时间，步长 100ms
+                g_control_state.phase2_auto_current_time_on -= 0.1f;
+                g_control_state.phase2_auto_current_time_off -= 0.1f;
+                
+                // 安全限制：最小换向时间设置为 0.1s
+                if (g_control_state.phase2_auto_current_time_on < 0.1f) g_control_state.phase2_auto_current_time_on = 0.1f;
+                if (g_control_state.phase2_auto_current_time_off < 0.1f) g_control_state.phase2_auto_current_time_off = 0.1f;
+                
+                Debug_Log("Auto Adjust: Pressure %.1f < 28.5. Bypass=%.1f%%, T_on=%.1fs, T_off=%.1fs", 
+                          display_lng_pressure, g_control_state.current_bypass_duty, 
+                          g_control_state.phase2_auto_current_time_on, g_control_state.phase2_auto_current_time_off);
+            }
+            // 罐压 > 31.5MPa 时，目前不进行超压处理
+        }
+        
+        target_time_on = g_control_state.phase2_auto_current_time_on;
+        target_time_off = g_control_state.phase2_auto_current_time_off;
+    }
+
+    // 3. 执行换向阀动作控制
+    uint32_t state_duration = current_time - g_control_state.rev_state_change_time;
+    bool current_state = (ValveControl_GetDirectionalValveState() == VALVE_STATE_ON);
+    
+    if (current_state) {
+        // 当前是开启状态 (做功)
+        float time_on_ms = target_time_on * 1000.0f;
+        if (state_duration >= (uint32_t)time_on_ms) {
+            // 切换到关闭状态 (吸油)
+            ValveControl_SetDirectionalValve(false);
+            g_control_state.rev_state_change_time = current_time;
+            RecordReversalEvent();
+        }
+    } else {
+        // 当前是关闭状态 (吸油)
+        float time_off_ms = target_time_off * 1000.0f;
+        if (state_duration >= (uint32_t)time_off_ms) {
+            // 切换到开启状态 (做功)
+            ValveControl_SetDirectionalValve(true);
+            g_control_state.rev_state_change_time = current_time;
+            RecordReversalEvent();
+        }
+    }
 }
 
 
@@ -422,12 +513,12 @@ void HydraulicControl_Init(void)
 
     // 设置默认参数（防止未初始化）
     g_control_state.params.set_bypass_ratio = 50.0f;
-    g_control_state.params.set_bypass_initial_decline_time = 10.0f;
+    g_control_state.params.set_bypass_initial_decline_time = 20.0f; // 20秒内降至0%
     g_control_state.params.set_rev_start_oilP_max = 1.2f;
     g_control_state.params.set_rev_start_oilP_min = 0.9f;
     g_control_state.params.set_first_fix_freq_time_on = 1.0f;
     g_control_state.params.set_first_fix_freq_time_off = 1.0f;
-    g_control_state.params.set_second_manual = false;
+    g_control_state.params.set_second_manual = false; // 默认为自动模式
     g_control_state.params.set_second_oilSuction_time = 0.0f;
     g_control_state.params.set_second_workDone_time = 0.0f;
     g_control_state.params.set_cooler_temperature_on = 55.0f;
@@ -535,24 +626,54 @@ void HydraulicControl_Process(float oil_pressure, float oil_temperature, float d
         // 3.3 下降完成后，根据外部下发的 set_bypass_ratio 进行控制
         else if (g_control_state.system_state != SYSTEM_STATE_DISABLED && 
                  g_control_state.system_state != SYSTEM_STATE_INITIALIZING) {
-            float target_duty = g_control_state.params.set_bypass_ratio;
-            if (target_duty < 0.0f) target_duty = 0.0f;
-            if (target_duty > 50.0f) target_duty = 50.0f;
             
-            if (g_control_state.current_bypass_duty != target_duty) {
-                g_control_state.current_bypass_duty = target_duty;
-                ValveControl_SetBypassValve(g_control_state.current_bypass_duty);
+            // 只有在非二阶段自动模式下，才同步外部 set_bypass_ratio
+            bool is_phase2_auto = (g_control_state.system_state == SYSTEM_STATE_REV_PHASE2 && 
+                                  !g_control_state.params.set_second_manual);
+            
+            if (!is_phase2_auto) {
+                float target_duty = g_control_state.params.set_bypass_ratio;
+                if (target_duty < 0.0f) target_duty = 0.0f;
+                if (target_duty > 50.0f) target_duty = 50.0f;
+                
+                if (g_control_state.current_bypass_duty != target_duty) {
+                    g_control_state.current_bypass_duty = target_duty;
+                    ValveControl_SetBypassValve(g_control_state.current_bypass_duty);
+                }
             }
         }
     }
     /* 4. 换向阀阶段转换判断 */
-    if (g_control_state.system_state == SYSTEM_STATE_REV_PHASE1) 
+    if (g_control_state.system_state == SYSTEM_STATE_INITIALIZING)
+    {
+        // 在旁通阀下降过程中，检测是否满足启动换向阀条件（油压异常）
+        if (ShouldStartReversalValve(oil_pressure))
+        {
+            g_control_state.system_state = SYSTEM_STATE_REV_PHASE1;
+            g_control_state.rev_state_change_time = GetCurrentTimeMs();
+            g_control_state.rev_phase1_start_time = GetCurrentTimeMs();
+            Debug_Log("Entering REV Phase 1: Oil pressure (%.2f MPa) triggered startup", oil_pressure);
+        }
+    }
+    else if (g_control_state.system_state == SYSTEM_STATE_REV_PHASE1) 
     {
         // 检测到罐压达到30MPa，进入二阶段
         if (display_lng_pressure >= TANK_PRESSURE_THRESHOLD_MPA) 
         {
             g_control_state.system_state = SYSTEM_STATE_REV_PHASE2;
             g_control_state.rev_state_change_time = GetCurrentTimeMs();
+            g_control_state.rev_phase2_start_time = GetCurrentTimeMs();
+            
+            // 进入二阶段时，如果是自动模式，初始化自动调整的时间参数
+            if (!g_control_state.params.set_second_manual) {
+                g_control_state.phase2_auto_current_time_on = g_control_state.params.set_first_fix_freq_time_on;
+                g_control_state.phase2_auto_current_time_off = g_control_state.params.set_first_fix_freq_time_off;
+                g_control_state.phase2_auto_last_adjust_time = GetCurrentTimeMs();
+                g_control_state.phase2_prev_manual_mode = false;
+            } else {
+                g_control_state.phase2_prev_manual_mode = true;
+            }
+            
             Debug_Log("Entering REV Phase 2: Tank pressure reached %.1f MPa", display_lng_pressure);
         }
     }

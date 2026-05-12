@@ -1,0 +1,10 @@
+{
+    "files.associations": {
+        "osif.h": "c",
+        "debug_log.h": "c",
+        "string.h": "c",
+        "hydraulic_control.h": "c",
+        "can_config.h": "c",
+        "stdint.h": "c"
+    }
+}

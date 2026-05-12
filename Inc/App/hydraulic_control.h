@@ -117,6 +117,12 @@ typedef struct {
     uint32_t cooler_force_off_start_time;       // 强制保护起始时间
     bool     cooler_force_off_active;           // 是否处于强制关闭保护期
 
+    /* 第二阶段自动模式动态调整参数 */
+    uint32_t phase2_auto_last_adjust_time;      // 上次自动调节时间
+    float    phase2_auto_current_time_on;       // 自动模式当前开启时间
+    float    phase2_auto_current_time_off;      // 自动模式当前关闭时间
+    bool     phase2_prev_manual_mode;           // 上次手动模式状态，用于检测切换
+
     /* 内部缓存参数 */
     control_params_t params;                    
 } hydraulic_control_state_t;
