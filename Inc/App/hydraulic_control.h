@@ -27,6 +27,16 @@ extern "C" {
 #define COOLER_TEMP_MEDIAN_SIZE         (5U)                    // 中值滤波窗口
 #define COOLER_TEMP_AVG_SIZE            (8U)                    // 平均滤波窗口
 
+/* 第二阶段（压力闭环）控制常量 */
+#define PHASE2_TARGET_PRESSURE_MPA      (30.0f)  // 二阶段目标罐压（MPa）
+#define PHASE2_PRESSURE_TOLERANCE_MPA   (1.5f)   // 二阶段目标罐压允许波动范围（±MPa）
+#define PHASE2_PRESSURE_LOW_MPA         (PHASE2_TARGET_PRESSURE_MPA - PHASE2_PRESSURE_TOLERANCE_MPA)  // 欠压阈值（MPa）；低于此值触发“增加做功/提高频率”
+#define PHASE2_PRESSURE_HIGH_MPA        (PHASE2_TARGET_PRESSURE_MPA + PHASE2_PRESSURE_TOLERANCE_MPA)  // 超压阈值（MPa）；当前策略不处理，仅用于对齐策略定义
+#define PHASE2_ADJUST_PERIOD_MS         (1000U)  // 自动模式调节周期（ms）；每到周期点才允许进行一次“步进调节”
+#define PHASE2_BYPASS_STEP_PERCENT      (2.0f)   // 自动模式旁通阀调节步长（%）；欠压时向 0% 方向减小开度
+#define PHASE2_TIME_STEP_S              (0.1f)   // 自动模式换向阀时间调节步长（s）；欠压时缩短 on/off 时间以提高频率
+#define PHASE2_MIN_VALVE_TIME_S         (0.1f)   // 自动模式换向阀最小 on/off 时间限制（s）；防止过高频率导致执行器异常
+
 /* ===========================================  Typedef  ============================================ */
 
 /**

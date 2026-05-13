@@ -18,7 +18,7 @@
 #include "osif.h"
 
 /* ===============================================  Constants  =========================================== */
-#define TANK_PRESSURE_THRESHOLD_MPA   30.0f // 进入换向阀二阶段的罐压阈值（MPa）
+#define TANK_PRESSURE_THRESHOLD_MPA   PHASE2_TARGET_PRESSURE_MPA
 
 /* ===========================================  Private Variables  =========================================== */
 static hydraulic_control_state_t g_control_state;
@@ -343,29 +343,29 @@ static void ProcessReversalValvePhase2(float display_lng_pressure)
         // 自动模式：根据罐压实时调整
         // 当罐压在 30±1.5MPa 内，停止调整（维持现状）
         // 当罐压 < 28.5MPa，增加动力，提高频率
-        if (current_time - g_control_state.phase2_auto_last_adjust_time >= 1000) {
+        if (current_time - g_control_state.phase2_auto_last_adjust_time >= PHASE2_ADJUST_PERIOD_MS) {
             g_control_state.phase2_auto_last_adjust_time = current_time;
 
-            if (display_lng_pressure < 28.5f) {
+            if (display_lng_pressure < PHASE2_PRESSURE_LOW_MPA) {
                 // 罐压呈下降趋势，需要增加做功
                 
                 // A. 旁通阀开度调整（增加动力）：步长 2%
-                g_control_state.current_bypass_duty -= 2.0f;
+                g_control_state.current_bypass_duty -= PHASE2_BYPASS_STEP_PERCENT;
                 if (g_control_state.current_bypass_duty < 0.0f) {
                     g_control_state.current_bypass_duty = 0.0f;
                 }
                 ValveControl_SetBypassValve(g_control_state.current_bypass_duty);
 
                 // B. 换向阀时间调整（提高频率）：缩短开启和关闭时间，步长 100ms
-                g_control_state.phase2_auto_current_time_on -= 0.1f;
-                g_control_state.phase2_auto_current_time_off -= 0.1f;
+                g_control_state.phase2_auto_current_time_on -= PHASE2_TIME_STEP_S;
+                g_control_state.phase2_auto_current_time_off -= PHASE2_TIME_STEP_S;
                 
                 // 安全限制：最小换向时间设置为 0.1s
-                if (g_control_state.phase2_auto_current_time_on < 0.1f) g_control_state.phase2_auto_current_time_on = 0.1f;
-                if (g_control_state.phase2_auto_current_time_off < 0.1f) g_control_state.phase2_auto_current_time_off = 0.1f;
+                if (g_control_state.phase2_auto_current_time_on < PHASE2_MIN_VALVE_TIME_S) g_control_state.phase2_auto_current_time_on = PHASE2_MIN_VALVE_TIME_S;
+                if (g_control_state.phase2_auto_current_time_off < PHASE2_MIN_VALVE_TIME_S) g_control_state.phase2_auto_current_time_off = PHASE2_MIN_VALVE_TIME_S;
                 
-                Debug_Log("Auto Adjust: Pressure %.1f < 28.5. Bypass=%.1f%%, T_on=%.1fs, T_off=%.1fs", 
-                          display_lng_pressure, g_control_state.current_bypass_duty, 
+                Debug_Log("Auto Adjust: Pressure %.1f < %.1f. Bypass=%.1f%%, T_on=%.1fs, T_off=%.1fs",
+                          display_lng_pressure, (float)PHASE2_PRESSURE_LOW_MPA, g_control_state.current_bypass_duty,
                           g_control_state.phase2_auto_current_time_on, g_control_state.phase2_auto_current_time_off);
             }
             // 罐压 > 31.5MPa 时，目前不进行超压处理
