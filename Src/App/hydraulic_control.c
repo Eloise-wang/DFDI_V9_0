@@ -155,38 +155,56 @@ static bool ShouldStartReversalValve(float oil_pressure)
 }
 
 /*!
- * @brief 更新换向频率统计（对应需求8）
+ * @brief 更新换向频率统计（滑动窗口法）
  *
- * 需求8：换向阀开关一次作为一次换向，换向频率的计算为1分钟内的总换向次数。
+ * 定义：一次“换向”= 两次物理翻转（ON->OFF->ON 或 OFF->ON->OFF）。
+ * 频率：过去 60 秒内的总换向次数（次/分钟）。
  *
- * 实现逻辑（固定窗口法）：
- * - 每次发生有效的换向动作时，通过 RecordReversalEvent() 递增当前窗口计数；
- * - 采用严格的 60 秒（REV_FREQ_CALC_WINDOW_MS）作为固定统计周期；
- * - 当 60 秒周期届满时，将统计到的总次数写入对外显示的变量 rev_freq_per_min，
- * 随后重置时间和计数器，开始下一轮统计；
- * - 在 0~59 秒的统计期间，系统保持输出“上一分钟”的稳定计算结果。摒弃了
- * 基于时间的实时比例估算，避免了启动初期数据剧烈跳变，更符合工业现场的观测习惯。
+ * 工业现场更关注“最近一分钟”真实发生次数，而非按瞬时周期推算。
+ * 因此采用 1 秒分辨率的 60 秒滑动窗口：
+ * - 每秒将上一秒的换向次数写入环形队列 counts_per_sec[60]；
+ * - 输出 rev_freq_per_min = 队列内 60 个桶的总和；
+ * - 若调度抖动导致累计超过 1 秒，则推进多个桶，缺失的秒填 0，避免窗口滞后。
  */
 static void UpdateReversalFrequency(void)
 {
     uint32_t current_time = GetCurrentTimeMs();
     uint32_t elapsed_ms = current_time - g_control_state.rev_last_update_ms; 
 
-    if (elapsed_ms >= 1000) {
-        g_control_state.counts_per_sec[g_control_state.current_sec_index] = g_control_state.current_sec_count;
-        g_control_state.current_sec_index = (g_control_state.current_sec_index + 1) % REV_FREQ_WINDOW_SIZE_SEC; 
-        g_control_state.current_sec_count = 0;
-        uint16_t sum = 0;
-			
-        for (int i = 0; i < REV_FREQ_WINDOW_SIZE_SEC; i++) { 
-            sum += g_control_state.counts_per_sec[i];
-
-        }
-
-        g_control_state.rev_freq_per_min = sum;
-        g_control_state.rev_last_update_ms += 1000; 
-
+    if (elapsed_ms < 1000U) {
+        return;
     }
+
+    uint32_t elapsed_s = elapsed_ms / 1000U;
+
+    if (elapsed_s >= (uint32_t)REV_FREQ_WINDOW_SIZE_SEC) {
+        memset(g_control_state.counts_per_sec, 0, sizeof(g_control_state.counts_per_sec));
+        g_control_state.current_sec_index = 0U;
+        g_control_state.current_sec_count = 0U;
+        g_control_state.rev_freq_per_min = 0U;
+        g_control_state.rev_last_update_ms = current_time;
+        return;
+    }
+
+    for (uint32_t i = 0U; i < elapsed_s; i++) {
+        uint8_t value_to_store = (i == 0U) ? g_control_state.current_sec_count : 0U;
+
+        g_control_state.counts_per_sec[g_control_state.current_sec_index] = value_to_store;
+        g_control_state.current_sec_index =
+            (uint8_t)((g_control_state.current_sec_index + 1U) % REV_FREQ_WINDOW_SIZE_SEC);
+
+        if (i == 0U) {
+            g_control_state.current_sec_count = 0U;
+        }
+    }
+
+    uint16_t sum = 0U;
+    for (int i = 0; i < REV_FREQ_WINDOW_SIZE_SEC; i++) {
+        sum = (uint16_t)(sum + (uint16_t)g_control_state.counts_per_sec[i]);
+    }
+
+    g_control_state.rev_freq_per_min = sum;
+    g_control_state.rev_last_update_ms += elapsed_s * 1000U;
 }
 
 
@@ -204,7 +222,9 @@ static void RecordReversalEvent(void)
         if (g_control_state.rev_toggle_count >= 2)
         {
             // 重点：这里不再去加 window 计数，而是只加当前秒的临时计数
-            g_control_state.current_sec_count++;  
+            if (g_control_state.current_sec_count < 255U) {
+                g_control_state.current_sec_count++;
+            }
             g_control_state.rev_toggle_count = 0;   // 清零重新累计
         }
     }
@@ -507,9 +527,9 @@ void HydraulicControl_Init(void)
     g_control_state.system_state = SYSTEM_STATE_DISABLED;
     g_control_state.rev_state = REV_STATE_IDLE;
     g_control_state.current_bypass_duty = 0.0f;
-    g_control_state.current_sec_count = 0;
-    g_control_state.current_sec_index = 0;
-    g_control_state.rev_window_sum = 0;
+    g_control_state.current_sec_count = 0U;
+    g_control_state.current_sec_index = 0U;
+    memset(g_control_state.counts_per_sec, 0, sizeof(g_control_state.counts_per_sec));
 
     // 设置默认参数（防止未初始化）
     g_control_state.params.set_bypass_ratio = 50.0f;

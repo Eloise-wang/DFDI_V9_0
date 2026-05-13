@@ -104,21 +104,19 @@ typedef struct {
     bool bypass_off_prev;                       // bypass_off 信号边沿检测
     uint32_t bypass_off_ramp_last_time;         // ramp 逻辑上一次计算时间
     
-    /* 换向阀实时状态 */
-    bool reversal_valve_enabled;                // 换向逻辑是否激活
-    uint32_t rev_phase1_start_time;             // 进入第一阶段时间
-    uint32_t rev_phase2_start_time;             // 进入第二阶段时间
-    uint32_t rev_state_change_time;             // 上次阀门动作时间
-    bool rev_last_state;                        // 阀门上一次物理状态（用于跳变计数）
-    
-    /* 换向频率统计 */
-    uint32_t rev_last_update_ms;                // 上次滑动窗口更新的时间戳
-    uint16_t current_sec_count;                 // 当前这一秒内的临时换向计数
-    uint16_t counts_per_sec[REV_FREQ_WINDOW_SIZE_SEC]; // 每一秒的计数数组
-    uint8_t  current_sec_index;                 // 滑动窗口当前索引
-    uint32_t rev_window_sum;                    // 窗口内计数的累加总和
-    uint16_t rev_freq_per_min;                  // 对外输出的频率结果（次/分）
-    uint8_t  rev_toggle_count;                  // 状态翻转计数（2次翻转=1次换向）
+    // --- 换向及频率统计 (滑动窗口法) ---
+    bool     reversal_valve_enabled;            // 换向阀全局使能标志
+    bool     rev_last_state;                    // 上一次换向阀物理状态（ON/OFF）
+    uint32_t rev_state_change_time;             // 换向阀状态改变时间戳（阶段1/2计时用）
+    uint32_t rev_phase1_start_time;             // 阶段1开始时间
+    uint32_t rev_phase2_start_time;             // 阶段2开始时间
+
+    uint16_t rev_freq_per_min;                  // 最终显示值：过去60秒的总换向次数
+    uint8_t  rev_toggle_count;                  // 翻转计数器（两次翻转=一次换向）
+    uint8_t  counts_per_sec[REV_FREQ_WINDOW_SIZE_SEC]; // 环形队列：每秒换向次数
+    uint8_t  current_sec_index;                 // 队列索引
+    uint32_t rev_last_update_ms;                // 滑动窗口更新时间戳（ms）
+    uint8_t  current_sec_count;                 // 当前这一秒内的临时换向计数
 
     /* 风冷器状态 */
     bool     cooler_enabled;                    // 风冷器当前是否开启
