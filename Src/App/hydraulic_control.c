@@ -359,6 +359,9 @@ static void ProcessReversalValvePhase2(float display_lng_pressure)
         target_time_on = g_control_state.params.set_second_workDone_time;
         target_time_off = g_control_state.params.set_second_oilSuction_time;
         // 旁通阀开度在 HydraulicControl_Process 中根据 set_bypass_ratio 同步
+        // 说明：手动模式完全由上位机给定参数驱动，不启用“超压保持态”这类自动保护冻结逻辑。
+        // 若上一轮处于自动模式的超压保持态，切到手动后必须清除该状态，否则会误冻结手动换向。
+        g_control_state.phase2_overpressure_hold_prev = false;
     } else {
         // 自动模式：根据罐压实时调整
         // 当罐压在 30±1.5MPa 内，停止调整（维持现状）
@@ -368,6 +371,7 @@ static void ProcessReversalValvePhase2(float display_lng_pressure)
 
             if (display_lng_pressure < PHASE2_PRESSURE_LOW_MPA) {
                 // 罐压呈下降趋势，需要增加做功
+                // 调节目标：提高排气量/泵送能力，尽快把罐压拉回到 30±1.5MPa 范围内
                 
                 // A. 旁通阀开度调整（增加动力）：步长 2%
                 g_control_state.current_bypass_duty -= PHASE2_BYPASS_STEP_PERCENT;
@@ -377,6 +381,7 @@ static void ProcessReversalValvePhase2(float display_lng_pressure)
                 ValveControl_SetBypassValve(g_control_state.current_bypass_duty);
 
                 // B. 换向阀时间调整（提高频率）：缩短开启和关闭时间，步长 100ms
+                // 注意：同时缩短 on/off，可以在“占空比”不变的情况下整体提升频率，达到更快泵送
                 g_control_state.phase2_auto_current_time_on -= PHASE2_TIME_STEP_S;
                 g_control_state.phase2_auto_current_time_off -= PHASE2_TIME_STEP_S;
                 
@@ -387,12 +392,75 @@ static void ProcessReversalValvePhase2(float display_lng_pressure)
                 Debug_Log("Auto Adjust: Pressure %.1f < %.1f. Bypass=%.1f%%, T_on=%.1fs, T_off=%.1fs",
                           display_lng_pressure, (float)PHASE2_PRESSURE_LOW_MPA, g_control_state.current_bypass_duty,
                           g_control_state.phase2_auto_current_time_on, g_control_state.phase2_auto_current_time_off);
+            } else if (display_lng_pressure > PHASE2_PRESSURE_HIGH_MPA) {
+                // 超压：罐压高于目标上限（31.5MPa），需要“减小做功/降低频率”
+                // 这里区分一般超压与危险超压：
+                // - 一般超压：按步长逐步开大旁通阀，同时降低频率（延长 on/off 时间）
+                // - 危险超压：直接强制全旁通（50%），快速切断做功，避免继续推高压力
+                bool is_danger = (display_lng_pressure > PHASE2_PRESSURE_DANGER_MPA);
+                float prev_bypass = g_control_state.current_bypass_duty;
+
+                if (is_danger) {
+                    // 危险超压：强制全旁通（停止做功）
+                    g_control_state.current_bypass_duty = 50.0f;
+                } else {
+                    // 一般超压：按步长朝 50% 方向调整（逐步减少做功）
+                    g_control_state.current_bypass_duty += PHASE2_BYPASS_OVER_STEP_PERCENT;
+                    if (g_control_state.current_bypass_duty > 50.0f) {
+                        g_control_state.current_bypass_duty = 50.0f;
+                    }
+                }
+
+                if (g_control_state.current_bypass_duty != prev_bypass) {
+                    ValveControl_SetBypassValve(g_control_state.current_bypass_duty);
+                }
+
+                // 降低换向频率：延长 on/off 时间（频率下降 → 单位时间做功次数下降）
+                g_control_state.phase2_auto_current_time_on += PHASE2_TIME_STEP_S;
+                g_control_state.phase2_auto_current_time_off += PHASE2_TIME_STEP_S;
+
+                // 安全限制：最大换向时间（防止频率过低到“几乎不泵送”）
+                if (g_control_state.phase2_auto_current_time_on > PHASE2_MAX_VALVE_TIME_S) g_control_state.phase2_auto_current_time_on = PHASE2_MAX_VALVE_TIME_S;
+                if (g_control_state.phase2_auto_current_time_off > PHASE2_MAX_VALVE_TIME_S) g_control_state.phase2_auto_current_time_off = PHASE2_MAX_VALVE_TIME_S;
+
+                Debug_Log("Auto Adjust: Pressure %.1f > %.1f%s. Bypass=%.1f%%, T_on=%.1fs, T_off=%.1fs",
+                          display_lng_pressure, (float)PHASE2_PRESSURE_HIGH_MPA, is_danger ? "(DANGER)" : "",
+                          g_control_state.current_bypass_duty,
+                          g_control_state.phase2_auto_current_time_on, g_control_state.phase2_auto_current_time_off);
             }
-            // 罐压 > 31.5MPa 时，目前不进行超压处理
         }
         
         target_time_on = g_control_state.phase2_auto_current_time_on;
         target_time_off = g_control_state.phase2_auto_current_time_off;
+    }
+
+    bool overpressure_hold_active =
+        (!is_manual) &&
+        (display_lng_pressure > PHASE2_PRESSURE_HIGH_MPA) &&
+        (g_control_state.current_bypass_duty >= 50.0f);
+
+    if (overpressure_hold_active) {
+        // 超压保持态（极限保护）：
+        // - 触发条件：自动模式 + 超压 + 旁通阀已经到 50%（已经“全旁通”）
+        // - 保护动作：停止换向阀动作并保持在 OFF 位（不再做功），直到压力回落到 ≤31.5MPa
+        // 说明：不在此处“持续下发 OFF”是为了避免无意义的重复GPIO/PWM操作与日志刷屏，
+        //      因此仅在首次进入保持态时下发一次强制 OFF。
+        if (!g_control_state.phase2_overpressure_hold_prev) {
+            ValveControl_SetDirectionalValve(false);
+            g_control_state.rev_state_change_time = current_time;
+            Debug_Log("Phase 2 Auto: Overpressure hold active. Pressure=%.1f MPa, Bypass=%.1f%%",
+                      display_lng_pressure, g_control_state.current_bypass_duty);
+        }
+        g_control_state.phase2_overpressure_hold_prev = true;
+        return;
+    }
+
+    if (g_control_state.phase2_overpressure_hold_prev) {
+        // 从“超压保持态”退出（压力已回落或旁通阀不再是 50%）：
+        // - 清除保持态标志
+        // - 重置换向计时基准：避免保持态期间累计的时间导致恢复瞬间直接发生一次换向
+        g_control_state.phase2_overpressure_hold_prev = false;
+        g_control_state.rev_state_change_time = current_time;
     }
 
     // 3. 执行换向阀动作控制

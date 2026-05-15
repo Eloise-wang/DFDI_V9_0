@@ -28,14 +28,28 @@ extern "C" {
 #define COOLER_TEMP_AVG_SIZE            (8U)                    // 平均滤波窗口
 
 /* 第二阶段（压力闭环）控制常量 */
-#define PHASE2_TARGET_PRESSURE_MPA      (30.0f)  // 二阶段目标罐压（MPa）
-#define PHASE2_PRESSURE_TOLERANCE_MPA   (1.5f)   // 二阶段目标罐压允许波动范围（±MPa）
-#define PHASE2_PRESSURE_LOW_MPA         (PHASE2_TARGET_PRESSURE_MPA - PHASE2_PRESSURE_TOLERANCE_MPA)  // 欠压阈值（MPa）；低于此值触发“增加做功/提高频率”
-#define PHASE2_PRESSURE_HIGH_MPA        (PHASE2_TARGET_PRESSURE_MPA + PHASE2_PRESSURE_TOLERANCE_MPA)  // 超压阈值（MPa）；当前策略不处理，仅用于对齐策略定义
-#define PHASE2_ADJUST_PERIOD_MS         (1000U)  // 自动模式调节周期（ms）；每到周期点才允许进行一次“步进调节”
-#define PHASE2_BYPASS_STEP_PERCENT      (2.0f)   // 自动模式旁通阀调节步长（%）；欠压时向 0% 方向减小开度
-#define PHASE2_TIME_STEP_S              (0.1f)   // 自动模式换向阀时间调节步长（s）；欠压时缩短 on/off 时间以提高频率
-#define PHASE2_MIN_VALVE_TIME_S         (0.1f)   // 自动模式换向阀最小 on/off 时间限制（s）；防止过高频率导致执行器异常
+#define PHASE2_TARGET_PRESSURE_MPA      (30.0f)  // 二阶段闭环目标：罐压目标值（MPa）
+#define PHASE2_PRESSURE_TOLERANCE_MPA   (1.5f)   // 二阶段闭环目标：允许波动范围（±MPa）
+// 欠压阈值：P < 28.5MPa 认为“做功不足/排气量不够”，系统进入“增加做功”方向调节
+#define PHASE2_PRESSURE_LOW_MPA         (PHASE2_TARGET_PRESSURE_MPA - PHASE2_PRESSURE_TOLERANCE_MPA)
+// 超压阈值：P > 31.5MPa 认为“做功过剩/排气量偏大”，系统进入“减少做功”方向调节
+#define PHASE2_PRESSURE_HIGH_MPA        (PHASE2_TARGET_PRESSURE_MPA + PHASE2_PRESSURE_TOLERANCE_MPA)
+// 危险超压阈值：用于区分“缓慢超压”和“危险超压”
+// - 一般超压：31.5 < P ≤ 33.0MPa → 逐步开大旁通阀、降低换向频率
+// - 危险超压：P > 33.0MPa → 旁通阀强制拉到 50%（全旁通），必要时停止换向阀动作
+#define PHASE2_PRESSURE_DANGER_MPA      (33.0f)
+// 自动模式调节周期：为了避免10ms循环内连续多次步进导致振荡，所有“步进调节”只允许每周期执行一次
+#define PHASE2_ADJUST_PERIOD_MS         (1000U)
+// 自动模式（欠压）旁通阀步长：向 0% 方向调整，让更多油参与做功
+#define PHASE2_BYPASS_STEP_PERCENT      (2.0f)
+// 自动模式（一般超压）旁通阀步长：向 50% 方向调整，让更少油参与做功
+#define PHASE2_BYPASS_OVER_STEP_PERCENT (5.0f)
+// 自动模式（时间）步长：通过同步改变 on/off 时间，调节换向频率
+#define PHASE2_TIME_STEP_S              (0.1f)
+// 自动模式换向阀 on/off 时间下限：避免频率过高导致执行器跟随异常
+#define PHASE2_MIN_VALVE_TIME_S         (0.1f)
+// 自动模式换向阀 on/off 时间上限：避免频率过低导致泵送停滞；同时与上位机参数范围保持一致
+#define PHASE2_MAX_VALVE_TIME_S         (10.0f)
 
 /* ===========================================  Typedef  ============================================ */
 
@@ -130,6 +144,10 @@ typedef struct {
     float    phase2_auto_current_time_on;       // 自动模式当前开启时间
     float    phase2_auto_current_time_off;      // 自动模式当前关闭时间
     bool     phase2_prev_manual_mode;           // 上次手动模式状态，用于检测切换
+    // 超压保持态边沿标志：
+    // - 进入保持态（false->true）：首次触发时强制将换向阀拉到 OFF，并冻结换向逻辑
+    // - 退出保持态（true->false）：解除冻结后重置计时基准，避免恢复瞬间因为“累计时间过长”导致立即换向
+    bool     phase2_overpressure_hold_prev;
 
     /* 内部缓存参数 */
     control_params_t params;                    
