@@ -385,9 +385,11 @@ static void ProcessReversalValvePhase2(float display_lng_pressure)
                 g_control_state.phase2_auto_current_time_on -= PHASE2_TIME_STEP_S;
                 g_control_state.phase2_auto_current_time_off -= PHASE2_TIME_STEP_S;
                 
-                // 安全限制：最小换向时间设置为 0.1s
-                if (g_control_state.phase2_auto_current_time_on < PHASE2_MIN_VALVE_TIME_S) g_control_state.phase2_auto_current_time_on = PHASE2_MIN_VALVE_TIME_S;
-                if (g_control_state.phase2_auto_current_time_off < PHASE2_MIN_VALVE_TIME_S) g_control_state.phase2_auto_current_time_off = PHASE2_MIN_VALVE_TIME_S;
+                // 限制条件（防止“频率提太快导致做无用功”）：
+                // - 做功阶段（ON）最低 0.8s
+                // - 吸油阶段（OFF）最低 0.4s
+                if (g_control_state.phase2_auto_current_time_on < PHASE2_MIN_WORKDONE_TIME_S) g_control_state.phase2_auto_current_time_on = PHASE2_MIN_WORKDONE_TIME_S;
+                if (g_control_state.phase2_auto_current_time_off < PHASE2_MIN_OILSUCTION_TIME_S) g_control_state.phase2_auto_current_time_off = PHASE2_MIN_OILSUCTION_TIME_S;
                 
                 Debug_Log("Auto Adjust: Pressure %.1f < %.1f. Bypass=%.1f%%, T_on=%.1fs, T_off=%.1fs",
                           display_lng_pressure, (float)PHASE2_PRESSURE_LOW_MPA, g_control_state.current_bypass_duty,

@@ -46,8 +46,11 @@ extern "C" {
 #define PHASE2_BYPASS_OVER_STEP_PERCENT (5.0f)
 // 自动模式（时间）步长：通过同步改变 on/off 时间，调节换向频率
 #define PHASE2_TIME_STEP_S              (0.1f)
-// 自动模式换向阀 on/off 时间下限：避免频率过高导致执行器跟随异常
-#define PHASE2_MIN_VALVE_TIME_S         (0.1f)
+// 自动模式换向阀时间下限（欠压“加快频率”方向的限制）：
+// - 时间缩得过短会导致执行机构高频空切换，泵送做功不足，表现为“做无用功”、发热与寿命下降
+// - 因此对 on/off 分别设置最小值，确保每个工作/吸油阶段都有足够的有效时间
+#define PHASE2_MIN_WORKDONE_TIME_S      (0.8f)   // 做功时间下限（换向阀 ON）
+#define PHASE2_MIN_OILSUCTION_TIME_S    (0.4f)   // 吸油时间下限（换向阀 OFF）
 // 自动模式换向阀 on/off 时间上限：避免频率过低导致泵送停滞；同时与上位机参数范围保持一致
 #define PHASE2_MAX_VALVE_TIME_S         (10.0f)
 
