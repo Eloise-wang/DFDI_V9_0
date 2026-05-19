@@ -27,6 +27,33 @@ extern "C" {
 #define COOLER_TEMP_MEDIAN_SIZE         (5U)                    // 中值滤波窗口
 #define COOLER_TEMP_AVG_SIZE            (8U)                    // 平均滤波窗口
 
+/* 第二阶段（压力闭环）控制常量 */
+#define PHASE2_TARGET_PRESSURE_MPA      (30.0f)  // 二阶段闭环目标：罐压目标值（MPa）
+#define PHASE2_PRESSURE_TOLERANCE_MPA   (1.5f)   // 二阶段闭环目标：允许波动范围（±MPa）
+// 欠压阈值：P < 28.5MPa 认为“做功不足/排气量不够”，系统进入“增加做功”方向调节
+#define PHASE2_PRESSURE_LOW_MPA         (PHASE2_TARGET_PRESSURE_MPA - PHASE2_PRESSURE_TOLERANCE_MPA)
+// 超压阈值：P > 31.5MPa 认为“做功过剩/排气量偏大”，系统进入“减少做功”方向调节
+#define PHASE2_PRESSURE_HIGH_MPA        (PHASE2_TARGET_PRESSURE_MPA + PHASE2_PRESSURE_TOLERANCE_MPA)
+// 危险超压阈值：用于区分“缓慢超压”和“危险超压”
+// - 一般超压：31.5 < P ≤ 33.0MPa → 逐步开大旁通阀、降低换向频率
+// - 危险超压：P > 33.0MPa → 旁通阀强制拉到 50%（全旁通），必要时停止换向阀动作
+#define PHASE2_PRESSURE_DANGER_MPA      (33.0f)
+// 自动模式调节周期：为了避免10ms循环内连续多次步进导致振荡，所有“步进调节”只允许每周期执行一次
+#define PHASE2_ADJUST_PERIOD_MS         (1000U)
+// 自动模式（欠压）旁通阀步长：向 0% 方向调整，让更多油参与做功
+#define PHASE2_BYPASS_STEP_PERCENT      (2.0f)
+// 自动模式（一般超压）旁通阀步长：向 50% 方向调整，让更少油参与做功
+#define PHASE2_BYPASS_OVER_STEP_PERCENT (5.0f)
+// 自动模式（时间）步长：通过同步改变 on/off 时间，调节换向频率
+#define PHASE2_TIME_STEP_S              (0.1f)
+// 自动模式换向阀时间下限（欠压“加快频率”方向的限制）：
+// - 时间缩得过短会导致执行机构高频空切换，泵送做功不足，表现为“做无用功”、发热与寿命下降
+// - 因此对 on/off 分别设置最小值，确保每个工作/吸油阶段都有足够的有效时间
+#define PHASE2_MIN_WORKDONE_TIME_S      (0.8f)   // 做功时间下限（换向阀 ON）
+#define PHASE2_MIN_OILSUCTION_TIME_S    (0.4f)   // 吸油时间下限（换向阀 OFF）
+// 自动模式换向阀 on/off 时间上限：避免频率过低导致泵送停滞；同时与上位机参数范围保持一致
+#define PHASE2_MAX_VALVE_TIME_S         (10.0f)
+
 /* ===========================================  Typedef  ============================================ */
 
 /**
@@ -94,21 +121,19 @@ typedef struct {
     bool bypass_off_prev;                       // bypass_off 信号边沿检测
     uint32_t bypass_off_ramp_last_time;         // ramp 逻辑上一次计算时间
     
-    /* 换向阀实时状态 */
-    bool reversal_valve_enabled;                // 换向逻辑是否激活
-    uint32_t rev_phase1_start_time;             // 进入第一阶段时间
-    uint32_t rev_phase2_start_time;             // 进入第二阶段时间
-    uint32_t rev_state_change_time;             // 上次阀门动作时间
-    bool rev_last_state;                        // 阀门上一次物理状态（用于跳变计数）
-    
-    /* 换向频率统计 */
-    uint32_t rev_last_update_ms;                // 上次滑动窗口更新的时间戳
-    uint16_t current_sec_count;                 // 当前这一秒内的临时换向计数
-    uint16_t counts_per_sec[REV_FREQ_WINDOW_SIZE_SEC]; // 每一秒的计数数组
-    uint8_t  current_sec_index;                 // 滑动窗口当前索引
-    uint32_t rev_window_sum;                    // 窗口内计数的累加总和
-    uint16_t rev_freq_per_min;                  // 对外输出的频率结果（次/分）
-    uint8_t  rev_toggle_count;                  // 状态翻转计数（2次翻转=1次换向）
+    // --- 换向及频率统计 (滑动窗口法) ---
+    bool     reversal_valve_enabled;            // 换向阀全局使能标志
+    bool     rev_last_state;                    // 上一次换向阀物理状态（ON/OFF）
+    uint32_t rev_state_change_time;             // 换向阀状态改变时间戳（阶段1/2计时用）
+    uint32_t rev_phase1_start_time;             // 阶段1开始时间
+    uint32_t rev_phase2_start_time;             // 阶段2开始时间
+
+    uint16_t rev_freq_per_min;                  // 最终显示值：过去60秒的总换向次数
+    uint8_t  rev_toggle_count;                  // 翻转计数器（两次翻转=一次换向）
+    uint8_t  counts_per_sec[REV_FREQ_WINDOW_SIZE_SEC]; // 环形队列：每秒换向次数
+    uint8_t  current_sec_index;                 // 队列索引
+    uint32_t rev_last_update_ms;                // 滑动窗口更新时间戳（ms）
+    uint8_t  current_sec_count;                 // 当前这一秒内的临时换向计数
 
     /* 风冷器状态 */
     bool     cooler_enabled;                    // 风冷器当前是否开启
@@ -116,6 +141,16 @@ typedef struct {
     uint32_t cooler_stop_time;                  // 上次停止时间
     uint32_t cooler_force_off_start_time;       // 强制保护起始时间
     bool     cooler_force_off_active;           // 是否处于强制关闭保护期
+
+    /* 第二阶段自动模式动态调整参数 */
+    uint32_t phase2_auto_last_adjust_time;      // 上次自动调节时间
+    float    phase2_auto_current_time_on;       // 自动模式当前开启时间
+    float    phase2_auto_current_time_off;      // 自动模式当前关闭时间
+    bool     phase2_prev_manual_mode;           // 上次手动模式状态，用于检测切换
+    // 超压保持态边沿标志：
+    // - 进入保持态（false->true）：首次触发时强制将换向阀拉到 OFF，并冻结换向逻辑
+    // - 退出保持态（true->false）：解除冻结后重置计时基准，避免恢复瞬间因为“累计时间过长”导致立即换向
+    bool     phase2_overpressure_hold_prev;
 
     /* 内部缓存参数 */
     control_params_t params;                    

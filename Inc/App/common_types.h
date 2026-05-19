@@ -82,11 +82,15 @@ typedef enum {
 
 // 已删除：LNG_PRESSURE_TARGET_MPA - 控制逻辑已移至PC端
 #define LNG_PRESSURE_TOLERANCE_MPA          1.0f        // LNG压力容差
-#define LNG_PRESSURE_MAX_MPA                26.5f       // LNG压力最大值(MPa)
-#define LNG_PRESSURE_UPPER_LIMIT_MPA        26.5f       // LNG压力上限(MPa)
-// 工程量程（用于上电自检与 device_status.debug 标志，按需求：0~31.5MPa）
+#define LNG_PRESSURE_MAX_MPA                35.0f       // LNG压力最大值(MPa)
+#define LNG_PRESSURE_UPPER_LIMIT_MPA        35.0f       // LNG压力上限(MPa)
+// 说明：
+// - 传感器换算（Voltage_To_LNG_Pressure）按 0~35MPa 线性输出；
+// - 二阶段超压策略包含 31.5/33MPa 区间判断，因此工程量程必须覆盖到 ≥33MPa；
+// - 若这里仍按 31.5MPa 限幅，10ms 控制任务会因为量程检查失败直接 return，导致超压逻辑无法执行。
+// 工程量程（用于上电自检与 device_status.debug 标志，按需求：0~35MPa）
 #define LNG_PRESSURE_MEAS_MIN_MPA           0.0f        // LNG压力测量最小值 (MPa)
-#define LNG_PRESSURE_MEAS_MAX_MPA           31.5f       // LNG压力测量最大值 (MPa)
+#define LNG_PRESSURE_MEAS_MAX_MPA           35.0f       // LNG压力测量最大值 (MPa)
 
 /* ==================== 滤波参数 ==================== */
 #define MONITOR_FILTER_SIZE                 5           // 监控滤波窗口大小（用于 sensor.c 中 g_filter_buffer）
