@@ -37,14 +37,16 @@ typedef struct {
     // ========== 来自 tsmaster_control2 消息 ==========
     // 系统控制
     bool system_enable;                          // 系统使能（从 tsmaster_control2.system_enable）
+    bool auto_mode;                             // 自动模式（从 tsmaster_control2.auto_mode）
     
     // 旁通阀控制参数
     double set_bypass_ratio;                     // 旁通阀比例（0..50%，从 tsmaster_control2.set_bypass_ratio）
     
-    // 第二阶段参数
-    bool   set_second_manual;                    // 第二阶段手动模式（从 tsmaster_control2.set_second_manual）
-    double set_second_oilSuction_time;           // 第二阶段吸油时间（从 tsmaster_control2.set_second_oilSuction_time）
-    double set_second_workDone_time;             // 第二阶段工作完成时间（从 tsmaster_control2.set_second_workDone_time）
+    // 伸出/回缩参数
+    double set_extend_time;                      // 伸出时间（0..6.3s，从 tsmaster_control2.set_extend_time）
+    double set_extend_pressure;                  // 伸出压力（0..25.5MPa，从 tsmaster_control2.set_extend_pressure）
+    double set_retract_time;                     // 回缩时间（0..3.1s，从 tsmaster_control2.set_retract_time）
+    double set_retract_pressure;                 // 回缩压力（0..12.7MPa，从 tsmaster_control2.set_retract_pressure）
     
     // 风冷器控制参数
     double set_cooler_temp_on;                   // 风冷器开启温度阈值（-40..80°C，从 tsmaster_control2.set_cooler_temperature_on）

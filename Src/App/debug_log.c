@@ -433,15 +433,17 @@ void Debug_Log_CANReceivedParameters(const pc_parameter_config_t *config)
     // 检查参数是否变化（仅在变化时打印）
     bool params_changed = first_print ||
         (last_config.system_enable != config->system_enable) ||
+        (last_config.auto_mode != config->auto_mode) ||
         (last_config.set_bypass_ratio != config->set_bypass_ratio) ||
+        (last_config.set_extend_time != config->set_extend_time) ||
+        (last_config.set_extend_pressure != config->set_extend_pressure) ||
+        (last_config.set_retract_time != config->set_retract_time) ||
+        (last_config.set_retract_pressure != config->set_retract_pressure) ||
         (last_config.set_bypass_initial_decline_time != config->set_bypass_initial_decline_time) ||
         (last_config.set_rev_start_oilP_max != config->set_rev_start_oilP_max) ||
         (last_config.set_rev_start_oilP_min != config->set_rev_start_oilP_min) ||
         (last_config.set_first_fix_freq_time_on != config->set_first_fix_freq_time_on) ||
         (last_config.set_first_fix_freq_time_off != config->set_first_fix_freq_time_off) ||
-        (last_config.set_second_manual != config->set_second_manual) ||
-        (last_config.set_second_oilSuction_time != config->set_second_oilSuction_time) ||
-        (last_config.set_second_workDone_time != config->set_second_workDone_time) ||
         (last_config.set_cooler_temp_on != config->set_cooler_temp_on) ||
         (last_config.set_cooler_temp_off != config->set_cooler_temp_off) ||
         (last_config.bypass_off != config->bypass_off);
@@ -449,16 +451,18 @@ void Debug_Log_CANReceivedParameters(const pc_parameter_config_t *config)
     if (params_changed) {
         Debug_Log("\r\n=== TSMaster Parameters Received ===\r\n");
         Debug_Log("System Enable: %s\r\n", config->system_enable ? "YES" : "NO");
+        Debug_Log("Auto Mode: %s\r\n", config->auto_mode ? "YES" : "NO");
         Debug_Log("Bypass Ratio: %.1f%%\r\n", config->set_bypass_ratio);
+        Debug_Log("Extend Time: %.2f s\r\n", config->set_extend_time);
+        Debug_Log("Extend Pressure: %.2f MPa\r\n", config->set_extend_pressure);
+        Debug_Log("Retract Time: %.2f s\r\n", config->set_retract_time);
+        Debug_Log("Retract Pressure: %.2f MPa\r\n", config->set_retract_pressure);
         Debug_Log("Bypass Decline Time: %.1f s\r\n", config->set_bypass_initial_decline_time);
         Debug_Log("Rev Start OilP Max: %.2f MPa\r\n", config->set_rev_start_oilP_max);
         Debug_Log("Rev Start OilP Min: %.2f MPa\r\n", config->set_rev_start_oilP_min);
         Debug_Log("Phase1 Time ON: %.2f s\r\n", config->set_first_fix_freq_time_on);
         Debug_Log("Phase1 Time OFF: %.2f s\r\n", config->set_first_fix_freq_time_off);
         Debug_Log("Bypass Off: %s\r\n", config->bypass_off ? "YES" : "NO");
-        Debug_Log("Phase2 Manual: %s\r\n", config->set_second_manual ? "YES" : "NO");
-        Debug_Log("Phase2 OilSuction Time: %.2f s\r\n", config->set_second_oilSuction_time);
-        Debug_Log("Phase2 WorkDone Time: %.2f s\r\n", config->set_second_workDone_time);
         Debug_Log("Cooler Temp ON: %.1f°C\r\n", config->set_cooler_temp_on);
         Debug_Log("Cooler Temp OFF: %.1f°C\r\n", config->set_cooler_temp_off);
         Debug_Log("=====================================\r\n\r\n");

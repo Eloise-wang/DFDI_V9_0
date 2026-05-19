@@ -17,9 +17,6 @@
 #include "debug_log.h"
 #include "osif.h"
 
-/* ===============================================  Constants  =========================================== */
-#define TANK_PRESSURE_THRESHOLD_MPA   PHASE2_TARGET_PRESSURE_MPA
-
 /* ===========================================  Private Variables  =========================================== */
 static hydraulic_control_state_t g_control_state;
 
@@ -320,173 +317,120 @@ static void ProcessReversalValvePhase1(void)
     }
 }
 
-
-static void ProcessReversalValvePhase2(float display_lng_pressure)
+/*!
+ * @brief 处理换向阀第二阶段（伸出/回缩循环控制）
+ *
+ * 对应 控制策略.md（二阶段控制逻辑）：
+ * - 进入二阶段条件（不可逆）：在一阶段内检测到油压 oil_pressure >= set_extend_pressure 后进入二阶段；
+ * - 二阶段手动模式流程（当前实现）：通过“压力阈值 + 定时动作”的组合实现伸出/回缩循环：
+ *   1) 达到伸出压力（oil_pressure >= set_extend_pressure）→ 执行回缩动作，回缩持续 set_retract_time；
+ *   2) 回缩时间结束后，等待油压降到回缩压力（oil_pressure <= set_retract_pressure）→ 执行伸出动作，伸出持续 set_extend_time；
+ *   3) 伸出时间结束后，等待油压再次达到伸出压力 → 回到步骤1。
+ *
+ * 设计要点：
+ * - 采用 set_extend_pressure / set_retract_pressure 形成滞回区间，避免单阈值导致的频繁抖动；
+ * - 定时动作（extend/retract time）确保阀位切换后有“最小维持时间”，避免压力瞬时抖动造成频繁反向；
+ * - auto_mode 当前仅作为预留接口（策略文档说明），未在此函数内改变流程；后续可在这里切换到真正自动算法。
+ *
+ * 与硬件动作的对应关系（基于现有 ValveControl_SetDirectionalValve 约定）：
+ * - DirectionalValve = ON  ：视为“伸出/做功”方向；
+ * - DirectionalValve = OFF ：视为“回缩/卸载”方向；
+ *
+ * 状态机说明（phase2_cycle_state）：
+ * - WAIT_HIGH      ：等待油压到达伸出压力（并保持阀为ON）
+ * - RETRACT_TIMED  ：开始回缩并定时保持 set_retract_time（阀强制OFF）
+ * - WAIT_LOW       ：等待油压降到回缩压力（阀保持OFF）
+ * - EXTEND_TIMED   ：开始伸出并定时保持 set_extend_time（阀强制ON）
+ */
+static void ProcessReversalValvePhase2(float oil_pressure)
 {
-    // 仅在主状态处于第二阶段时执行
     if (g_control_state.system_state != SYSTEM_STATE_REV_PHASE2) {
         return;
     }
 
-    uint32_t current_time = GetCurrentTimeMs();
-    bool is_manual = g_control_state.params.set_second_manual;
+    uint32_t now_ms = GetCurrentTimeMs();
+    float extend_pressure = g_control_state.params.set_extend_pressure;
+    float retract_pressure = g_control_state.params.set_retract_pressure;
 
-    // 1. 模式切换检测与参数同步
-    if (is_manual != g_control_state.phase2_prev_manual_mode) {
-        if (!is_manual) {
-            // 手动 -> 自动
-            // 将当前的开启/关闭时间作为自动模式的起始参考值
-            // 如果刚从一阶段进入二阶段，则已经初始化过，这里是运行过程中的模式切换
-            g_control_state.phase2_auto_current_time_on = g_control_state.params.set_second_workDone_time;
-            g_control_state.phase2_auto_current_time_off = g_control_state.params.set_second_oilSuction_time;
-            g_control_state.phase2_auto_last_adjust_time = current_time;
-            Debug_Log("Phase 2: Switched to AUTO mode. Initial T_on=%.1fs, T_off=%.1fs", 
-                      g_control_state.phase2_auto_current_time_on, g_control_state.phase2_auto_current_time_off);
-        } else {
-            // 自动 -> 手动
-            Debug_Log("Phase 2: Switched to MANUAL mode. Using user params: T_on=%.1fs, T_off=%.1fs", 
-                      g_control_state.params.set_second_workDone_time, g_control_state.params.set_second_oilSuction_time);
-        }
-        g_control_state.phase2_prev_manual_mode = is_manual;
+    // 保护：若回缩压力设置高于伸出压力，会导致滞回区间反向、逻辑难以收敛
+    // 这里将 retract_pressure 裁剪到不高于 extend_pressure，避免“永远等不到低阈值/高阈值”的卡死情形。
+    if (retract_pressure > extend_pressure) {
+        retract_pressure = extend_pressure;
     }
 
-    float target_time_on;
-    float target_time_off;
+    float retract_time_ms_f = g_control_state.params.set_retract_time * 1000.0f;
+    float extend_time_ms_f = g_control_state.params.set_extend_time * 1000.0f;
 
-    // 2. 模式逻辑处理
-    if (is_manual) {
-        // 手动模式：直接使用用户输入的参数
-        target_time_on = g_control_state.params.set_second_workDone_time;
-        target_time_off = g_control_state.params.set_second_oilSuction_time;
-        // 旁通阀开度在 HydraulicControl_Process 中根据 set_bypass_ratio 同步
-        // 说明：手动模式完全由上位机给定参数驱动，不启用“超压保持态”这类自动保护冻结逻辑。
-        // 若上一轮处于自动模式的超压保持态，切到手动后必须清除该状态，否则会误冻结手动换向。
-        g_control_state.phase2_overpressure_hold_prev = false;
-    } else {
-        // 自动模式：根据罐压实时调整
-        // 当罐压在 30±1.5MPa 内，停止调整（维持现状）
-        // 当罐压 < 28.5MPa，增加动力，提高频率
-        if (current_time - g_control_state.phase2_auto_last_adjust_time >= PHASE2_ADJUST_PERIOD_MS) {
-            g_control_state.phase2_auto_last_adjust_time = current_time;
+    // 时间保护：避免出现负时间导致比较逻辑异常
+    if (retract_time_ms_f < 0.0f) retract_time_ms_f = 0.0f;
+    if (extend_time_ms_f < 0.0f) extend_time_ms_f = 0.0f;
 
-            if (display_lng_pressure < PHASE2_PRESSURE_LOW_MPA) {
-                // 罐压呈下降趋势，需要增加做功
-                // 调节目标：提高排气量/泵送能力，尽快把罐压拉回到 30±1.5MPa 范围内
-                
-                // A. 旁通阀开度调整（增加动力）：步长 2%
-                g_control_state.current_bypass_duty -= PHASE2_BYPASS_STEP_PERCENT;
-                if (g_control_state.current_bypass_duty < 0.0f) {
-                    g_control_state.current_bypass_duty = 0.0f;
-                }
-                ValveControl_SetBypassValve(g_control_state.current_bypass_duty);
+    // elapsed_ms：当前阶段的“计时参考点”为 rev_state_change_time（在进入某些状态时会重置）
+    uint32_t elapsed_ms = now_ms - g_control_state.rev_state_change_time;
+    bool valve_on = (ValveControl_GetDirectionalValveState() == VALVE_STATE_ON);
 
-                // B. 换向阀时间调整（提高频率）：缩短开启和关闭时间，步长 100ms
-                // 注意：同时缩短 on/off，可以在“占空比”不变的情况下整体提升频率，达到更快泵送
-                g_control_state.phase2_auto_current_time_on -= PHASE2_TIME_STEP_S;
-                g_control_state.phase2_auto_current_time_off -= PHASE2_TIME_STEP_S;
-                
-                // 限制条件（防止“频率提太快导致做无用功”）：
-                // - 做功阶段（ON）最低 0.8s
-                // - 吸油阶段（OFF）最低 0.4s
-                if (g_control_state.phase2_auto_current_time_on < PHASE2_MIN_WORKDONE_TIME_S) g_control_state.phase2_auto_current_time_on = PHASE2_MIN_WORKDONE_TIME_S;
-                if (g_control_state.phase2_auto_current_time_off < PHASE2_MIN_OILSUCTION_TIME_S) g_control_state.phase2_auto_current_time_off = PHASE2_MIN_OILSUCTION_TIME_S;
-                
-                Debug_Log("Auto Adjust: Pressure %.1f < %.1f. Bypass=%.1f%%, T_on=%.1fs, T_off=%.1fs",
-                          display_lng_pressure, (float)PHASE2_PRESSURE_LOW_MPA, g_control_state.current_bypass_duty,
-                          g_control_state.phase2_auto_current_time_on, g_control_state.phase2_auto_current_time_off);
-            } else if (display_lng_pressure > PHASE2_PRESSURE_HIGH_MPA) {
-                // 超压：罐压高于目标上限（31.5MPa），需要“减小做功/降低频率”
-                // 这里区分一般超压与危险超压：
-                // - 一般超压：按步长逐步开大旁通阀，同时降低频率（延长 on/off 时间）
-                // - 危险超压：直接强制全旁通（50%），快速切断做功，避免继续推高压力
-                bool is_danger = (display_lng_pressure > PHASE2_PRESSURE_DANGER_MPA);
-                float prev_bypass = g_control_state.current_bypass_duty;
-
-                if (is_danger) {
-                    // 危险超压：强制全旁通（停止做功）
-                    g_control_state.current_bypass_duty = 50.0f;
-                } else {
-                    // 一般超压：按步长朝 50% 方向调整（逐步减少做功）
-                    g_control_state.current_bypass_duty += PHASE2_BYPASS_OVER_STEP_PERCENT;
-                    if (g_control_state.current_bypass_duty > 50.0f) {
-                        g_control_state.current_bypass_duty = 50.0f;
-                    }
-                }
-
-                if (g_control_state.current_bypass_duty != prev_bypass) {
-                    ValveControl_SetBypassValve(g_control_state.current_bypass_duty);
-                }
-
-                // 降低换向频率：延长 on/off 时间（频率下降 → 单位时间做功次数下降）
-                g_control_state.phase2_auto_current_time_on += PHASE2_TIME_STEP_S;
-                g_control_state.phase2_auto_current_time_off += PHASE2_TIME_STEP_S;
-
-                // 安全限制：最大换向时间（防止频率过低到“几乎不泵送”）
-                if (g_control_state.phase2_auto_current_time_on > PHASE2_MAX_VALVE_TIME_S) g_control_state.phase2_auto_current_time_on = PHASE2_MAX_VALVE_TIME_S;
-                if (g_control_state.phase2_auto_current_time_off > PHASE2_MAX_VALVE_TIME_S) g_control_state.phase2_auto_current_time_off = PHASE2_MAX_VALVE_TIME_S;
-
-                Debug_Log("Auto Adjust: Pressure %.1f > %.1f%s. Bypass=%.1f%%, T_on=%.1fs, T_off=%.1fs",
-                          display_lng_pressure, (float)PHASE2_PRESSURE_HIGH_MPA, is_danger ? "(DANGER)" : "",
-                          g_control_state.current_bypass_duty,
-                          g_control_state.phase2_auto_current_time_on, g_control_state.phase2_auto_current_time_off);
+    switch (g_control_state.phase2_cycle_state)
+    {
+        case PHASE2_CYCLE_STATE_RETRACT_TIMED:
+            // 回缩定时阶段：确保阀处于 OFF（回缩方向），并保持 set_retract_time
+            if (valve_on) {
+                ValveControl_SetDirectionalValve(false);
+                g_control_state.rev_state_change_time = now_ms;
+                RecordReversalEvent();
+                elapsed_ms = 0U;
             }
-        }
-        
-        target_time_on = g_control_state.phase2_auto_current_time_on;
-        target_time_off = g_control_state.phase2_auto_current_time_off;
-    }
 
-    bool overpressure_hold_active =
-        (!is_manual) &&
-        (display_lng_pressure > PHASE2_PRESSURE_HIGH_MPA) &&
-        (g_control_state.current_bypass_duty >= 50.0f);
+            if (elapsed_ms >= (uint32_t)retract_time_ms_f) {
+                // 回缩时间到 → 进入“等待低压阈值”阶段
+                g_control_state.phase2_cycle_state = PHASE2_CYCLE_STATE_WAIT_LOW;
+            }
+            break;
 
-    if (overpressure_hold_active) {
-        // 超压保持态（极限保护）：
-        // - 触发条件：自动模式 + 超压 + 旁通阀已经到 50%（已经“全旁通”）
-        // - 保护动作：停止换向阀动作并保持在 OFF 位（不再做功），直到压力回落到 ≤31.5MPa
-        // 说明：不在此处“持续下发 OFF”是为了避免无意义的重复GPIO/PWM操作与日志刷屏，
-        //      因此仅在首次进入保持态时下发一次强制 OFF。
-        if (!g_control_state.phase2_overpressure_hold_prev) {
-            ValveControl_SetDirectionalValve(false);
-            g_control_state.rev_state_change_time = current_time;
-            Debug_Log("Phase 2 Auto: Overpressure hold active. Pressure=%.1f MPa, Bypass=%.1f%%",
-                      display_lng_pressure, g_control_state.current_bypass_duty);
-        }
-        g_control_state.phase2_overpressure_hold_prev = true;
-        return;
-    }
+        case PHASE2_CYCLE_STATE_WAIT_LOW:
+            // 等待低阈值阶段：阀保持 OFF，直到油压下降到 retract_pressure
+            if (valve_on) {
+                ValveControl_SetDirectionalValve(false);
+                g_control_state.rev_state_change_time = now_ms;
+                RecordReversalEvent();
+            }
 
-    if (g_control_state.phase2_overpressure_hold_prev) {
-        // 从“超压保持态”退出（压力已回落或旁通阀不再是 50%）：
-        // - 清除保持态标志
-        // - 重置换向计时基准：避免保持态期间累计的时间导致恢复瞬间直接发生一次换向
-        g_control_state.phase2_overpressure_hold_prev = false;
-        g_control_state.rev_state_change_time = current_time;
-    }
+            if (oil_pressure <= retract_pressure) {
+                // 达到回缩压力阈值（低阈值）→ 转入“伸出定时阶段”
+                g_control_state.phase2_cycle_state = PHASE2_CYCLE_STATE_EXTEND_TIMED;
+                g_control_state.rev_state_change_time = now_ms;
+            }
+            break;
 
-    // 3. 执行换向阀动作控制
-    uint32_t state_duration = current_time - g_control_state.rev_state_change_time;
-    bool current_state = (ValveControl_GetDirectionalValveState() == VALVE_STATE_ON);
-    
-    if (current_state) {
-        // 当前是开启状态 (做功)
-        float time_on_ms = target_time_on * 1000.0f;
-        if (state_duration >= (uint32_t)time_on_ms) {
-            // 切换到关闭状态 (吸油)
-            ValveControl_SetDirectionalValve(false);
-            g_control_state.rev_state_change_time = current_time;
-            RecordReversalEvent();
-        }
-    } else {
-        // 当前是关闭状态 (吸油)
-        float time_off_ms = target_time_off * 1000.0f;
-        if (state_duration >= (uint32_t)time_off_ms) {
-            // 切换到开启状态 (做功)
-            ValveControl_SetDirectionalValve(true);
-            g_control_state.rev_state_change_time = current_time;
-            RecordReversalEvent();
-        }
+        case PHASE2_CYCLE_STATE_EXTEND_TIMED:
+            // 伸出定时阶段：确保阀处于 ON（伸出方向），并保持 set_extend_time
+            if (!valve_on) {
+                ValveControl_SetDirectionalValve(true);
+                g_control_state.rev_state_change_time = now_ms;
+                RecordReversalEvent();
+                elapsed_ms = 0U;
+            }
+
+            if (elapsed_ms >= (uint32_t)extend_time_ms_f) {
+                // 伸出时间到 → 进入“等待高压阈值”阶段
+                g_control_state.phase2_cycle_state = PHASE2_CYCLE_STATE_WAIT_HIGH;
+            }
+            break;
+
+        case PHASE2_CYCLE_STATE_WAIT_HIGH:
+        default:
+            // 等待高阈值阶段：阀保持 ON，直到油压上升到 extend_pressure
+            if (!valve_on) {
+                ValveControl_SetDirectionalValve(true);
+                g_control_state.rev_state_change_time = now_ms;
+                RecordReversalEvent();
+            }
+
+            if (oil_pressure >= extend_pressure) {
+                // 达到伸出压力阈值（高阈值）→ 转入“回缩定时阶段”
+                g_control_state.phase2_cycle_state = PHASE2_CYCLE_STATE_RETRACT_TIMED;
+                g_control_state.rev_state_change_time = now_ms;
+            }
+            break;
     }
 }
 
@@ -608,11 +552,21 @@ void HydraulicControl_Init(void)
     g_control_state.params.set_rev_start_oilP_min = 0.9f;
     g_control_state.params.set_first_fix_freq_time_on = 1.0f;
     g_control_state.params.set_first_fix_freq_time_off = 1.0f;
-    g_control_state.params.set_second_manual = false; // 默认为自动模式
-    g_control_state.params.set_second_oilSuction_time = 0.0f;
-    g_control_state.params.set_second_workDone_time = 0.0f;
+    // 二阶段参数默认值：
+    // - auto_mode 默认 false（先按手动流程跑，自动模式仅预留接口）
+    // - extend/retract 默认 0（若未配置，二阶段进入条件不会满足；或进入后定时阶段会立即结束）
+    g_control_state.params.auto_mode = false;
+    g_control_state.params.set_extend_time = 11.5f;
+    g_control_state.params.set_extend_pressure = 4.5f;
+    g_control_state.params.set_retract_time = 0.8f;
+    g_control_state.params.set_retract_pressure = 0.3f;
     g_control_state.params.set_cooler_temperature_on = 55.0f;
     g_control_state.params.set_cooler_temperature_off = 50.0f;
+
+    // 二阶段状态机默认从“等待高压阈值”开始：
+    // 当系统进入二阶段时，会在 HydraulicControl_Process() 中强制切换为 RETRACT_TIMED 作为首动作，
+    // 以满足策略“进入二阶段后，检测到达到伸出压力则回缩”的动作顺序。
+    g_control_state.phase2_cycle_state = PHASE2_CYCLE_STATE_WAIT_HIGH;
 }
 
 void HydraulicControl_UpdateParams(const control_params_t *params)
@@ -682,7 +636,7 @@ void HydraulicControl_Process(float oil_pressure, float oil_temperature, float d
     /* 3. 旁通阀逻辑处理 */
     // 3.1 处理强制关闭(Bypass_Off)触发的 Ramp 上升逻辑
     bool bypass_off_active = g_control_state.params.bypass_off && 
-                            (g_control_state.system_state == SYSTEM_STATE_REV_PHASE1 || 
+                            (g_control_state.system_state == SYSTEM_STATE_REV_PHASE1 ||
                              g_control_state.system_state == SYSTEM_STATE_REV_PHASE2);
 
     if (bypass_off_active) {
@@ -717,19 +671,13 @@ void HydraulicControl_Process(float oil_pressure, float oil_temperature, float d
         else if (g_control_state.system_state != SYSTEM_STATE_DISABLED && 
                  g_control_state.system_state != SYSTEM_STATE_INITIALIZING) {
             
-            // 只有在非二阶段自动模式下，才同步外部 set_bypass_ratio
-            bool is_phase2_auto = (g_control_state.system_state == SYSTEM_STATE_REV_PHASE2 && 
-                                  !g_control_state.params.set_second_manual);
+            float target_duty = g_control_state.params.set_bypass_ratio;
+            if (target_duty < 0.0f) target_duty = 0.0f;
+            if (target_duty > 50.0f) target_duty = 50.0f;
             
-            if (!is_phase2_auto) {
-                float target_duty = g_control_state.params.set_bypass_ratio;
-                if (target_duty < 0.0f) target_duty = 0.0f;
-                if (target_duty > 50.0f) target_duty = 50.0f;
-                
-                if (g_control_state.current_bypass_duty != target_duty) {
-                    g_control_state.current_bypass_duty = target_duty;
-                    ValveControl_SetBypassValve(g_control_state.current_bypass_duty);
-                }
+            if (g_control_state.current_bypass_duty != target_duty) {
+                g_control_state.current_bypass_duty = target_duty;
+                ValveControl_SetBypassValve(g_control_state.current_bypass_duty);
             }
         }
     }
@@ -747,24 +695,13 @@ void HydraulicControl_Process(float oil_pressure, float oil_temperature, float d
     }
     else if (g_control_state.system_state == SYSTEM_STATE_REV_PHASE1) 
     {
-        // 检测到罐压达到30MPa，进入二阶段
-        if (display_lng_pressure >= TANK_PRESSURE_THRESHOLD_MPA) 
-        {
+        // 二阶段进入条件（不可逆）：
+        // 一阶段运行中，当油压达到/超过 set_extend_pressure 时进入二阶段，并执行回缩动作作为二阶段的首个动作。
+        if (oil_pressure >= g_control_state.params.set_extend_pressure) {
             g_control_state.system_state = SYSTEM_STATE_REV_PHASE2;
             g_control_state.rev_state_change_time = GetCurrentTimeMs();
             g_control_state.rev_phase2_start_time = GetCurrentTimeMs();
-            
-            // 进入二阶段时，如果是自动模式，初始化自动调整的时间参数
-            if (!g_control_state.params.set_second_manual) {
-                g_control_state.phase2_auto_current_time_on = g_control_state.params.set_first_fix_freq_time_on;
-                g_control_state.phase2_auto_current_time_off = g_control_state.params.set_first_fix_freq_time_off;
-                g_control_state.phase2_auto_last_adjust_time = GetCurrentTimeMs();
-                g_control_state.phase2_prev_manual_mode = false;
-            } else {
-                g_control_state.phase2_prev_manual_mode = true;
-            }
-            
-            Debug_Log("Entering REV Phase 2: Tank pressure reached %.1f MPa", display_lng_pressure);
+            g_control_state.phase2_cycle_state = PHASE2_CYCLE_STATE_RETRACT_TIMED;
         }
     }
 
@@ -776,7 +713,7 @@ void HydraulicControl_Process(float oil_pressure, float oil_temperature, float d
             break;
 
         case SYSTEM_STATE_REV_PHASE2:
-            ProcessReversalValvePhase2(display_lng_pressure);
+            ProcessReversalValvePhase2(oil_pressure);
             break;
 
         default:

@@ -27,33 +27,6 @@ extern "C" {
 #define COOLER_TEMP_MEDIAN_SIZE         (5U)                    // 中值滤波窗口
 #define COOLER_TEMP_AVG_SIZE            (8U)                    // 平均滤波窗口
 
-/* 第二阶段（压力闭环）控制常量 */
-#define PHASE2_TARGET_PRESSURE_MPA      (30.0f)  // 二阶段闭环目标：罐压目标值（MPa）
-#define PHASE2_PRESSURE_TOLERANCE_MPA   (1.5f)   // 二阶段闭环目标：允许波动范围（±MPa）
-// 欠压阈值：P < 28.5MPa 认为“做功不足/排气量不够”，系统进入“增加做功”方向调节
-#define PHASE2_PRESSURE_LOW_MPA         (PHASE2_TARGET_PRESSURE_MPA - PHASE2_PRESSURE_TOLERANCE_MPA)
-// 超压阈值：P > 31.5MPa 认为“做功过剩/排气量偏大”，系统进入“减少做功”方向调节
-#define PHASE2_PRESSURE_HIGH_MPA        (PHASE2_TARGET_PRESSURE_MPA + PHASE2_PRESSURE_TOLERANCE_MPA)
-// 危险超压阈值：用于区分“缓慢超压”和“危险超压”
-// - 一般超压：31.5 < P ≤ 33.0MPa → 逐步开大旁通阀、降低换向频率
-// - 危险超压：P > 33.0MPa → 旁通阀强制拉到 50%（全旁通），必要时停止换向阀动作
-#define PHASE2_PRESSURE_DANGER_MPA      (33.0f)
-// 自动模式调节周期：为了避免10ms循环内连续多次步进导致振荡，所有“步进调节”只允许每周期执行一次
-#define PHASE2_ADJUST_PERIOD_MS         (1000U)
-// 自动模式（欠压）旁通阀步长：向 0% 方向调整，让更多油参与做功
-#define PHASE2_BYPASS_STEP_PERCENT      (2.0f)
-// 自动模式（一般超压）旁通阀步长：向 50% 方向调整，让更少油参与做功
-#define PHASE2_BYPASS_OVER_STEP_PERCENT (5.0f)
-// 自动模式（时间）步长：通过同步改变 on/off 时间，调节换向频率
-#define PHASE2_TIME_STEP_S              (0.1f)
-// 自动模式换向阀时间下限（欠压“加快频率”方向的限制）：
-// - 时间缩得过短会导致执行机构高频空切换，泵送做功不足，表现为“做无用功”、发热与寿命下降
-// - 因此对 on/off 分别设置最小值，确保每个工作/吸油阶段都有足够的有效时间
-#define PHASE2_MIN_WORKDONE_TIME_S      (0.8f)   // 做功时间下限（换向阀 ON）
-#define PHASE2_MIN_OILSUCTION_TIME_S    (0.4f)   // 吸油时间下限（换向阀 OFF）
-// 自动模式换向阀 on/off 时间上限：避免频率过低导致泵送停滞；同时与上位机参数范围保持一致
-#define PHASE2_MAX_VALVE_TIME_S         (10.0f)
-
 /* ===========================================  Typedef  ============================================ */
 
 /**
@@ -78,11 +51,19 @@ typedef enum {
     REV_STATE_FORCE_OFF
 } reversal_valve_control_state_t;
 
+typedef enum {
+    PHASE2_CYCLE_STATE_WAIT_HIGH = 0,
+    PHASE2_CYCLE_STATE_RETRACT_TIMED,
+    PHASE2_CYCLE_STATE_WAIT_LOW,
+    PHASE2_CYCLE_STATE_EXTEND_TIMED
+} phase2_cycle_state_t;
+
 /**
  * @brief 控制参数结构体（由PC/CAN端下发）
  */
 typedef struct {
     bool system_enable;                         // 系统总使能
+    bool auto_mode;                             // 自动模式（0=手动，1=自动）
     
     /* 旁通阀参数 */
     float set_bypass_ratio;                     // 旁通阀目标开度（%）
@@ -96,11 +77,12 @@ typedef struct {
     /* 第一阶段参数（固定频率） */
     float set_first_fix_freq_time_on;           // 开启持续时间
     float set_first_fix_freq_time_off;          // 关闭持续时间
-    
-    /* 第二阶段参数 */
-    bool  set_second_manual;
-    float set_second_oilSuction_time;
-    float set_second_workDone_time;
+
+    /* 第二阶段参数（伸出/回缩控制） */
+    float set_extend_time;                      // 伸出时间（秒）
+    float set_extend_pressure;                  // 伸出压力（MPa）
+    float set_retract_time;                     // 回缩时间（秒）
+    float set_retract_pressure;                 // 回缩压力（MPa）
     
     /* 风冷器参数 */
     float set_cooler_temperature_on;            // 开启温度 (W1)
@@ -135,22 +117,14 @@ typedef struct {
     uint32_t rev_last_update_ms;                // 滑动窗口更新时间戳（ms）
     uint8_t  current_sec_count;                 // 当前这一秒内的临时换向计数
 
+    phase2_cycle_state_t phase2_cycle_state;
+
     /* 风冷器状态 */
     bool     cooler_enabled;                    // 风冷器当前是否开启
     uint32_t cooler_start_time;                 // 本次启动时间
     uint32_t cooler_stop_time;                  // 上次停止时间
     uint32_t cooler_force_off_start_time;       // 强制保护起始时间
     bool     cooler_force_off_active;           // 是否处于强制关闭保护期
-
-    /* 第二阶段自动模式动态调整参数 */
-    uint32_t phase2_auto_last_adjust_time;      // 上次自动调节时间
-    float    phase2_auto_current_time_on;       // 自动模式当前开启时间
-    float    phase2_auto_current_time_off;      // 自动模式当前关闭时间
-    bool     phase2_prev_manual_mode;           // 上次手动模式状态，用于检测切换
-    // 超压保持态边沿标志：
-    // - 进入保持态（false->true）：首次触发时强制将换向阀拉到 OFF，并冻结换向逻辑
-    // - 退出保持态（true->false）：解除冻结后重置计时基准，避免恢复瞬间因为“累计时间过长”导致立即换向
-    bool     phase2_overpressure_hold_prev;
 
     /* 内部缓存参数 */
     control_params_t params;                    

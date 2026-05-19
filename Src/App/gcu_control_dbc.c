@@ -320,11 +320,14 @@ int tsmaster_control2_pack(
     
     memset(&dst_p[0], 0, 8);
     
-    /* set_second_manual: bit 0, 1 bit */
-    dst_p[0] |= pack_left_shift_u8(src_p->set_second_manual, 0u, 0x01u);
+    /* auto_mode: bit 0, 1 bit */
+    dst_p[0] |= pack_left_shift_u8(src_p->auto_mode, 0u, 0x01u);
 
-    /* set_second_oilSuction_time: bit 8, 8 bits */
-    dst_p[1] |= pack_left_shift_u8(src_p->set_second_oilSuction_time, 0u, 0xffu);
+    /* set_extend_time: bit 1, 6 bits */
+    dst_p[0] |= pack_left_shift_u8(src_p->set_extend_time, 1u, 0x7eu);
+
+    /* set_extend_pressure: bit 8, 8 bits */
+    dst_p[1] |= pack_left_shift_u8(src_p->set_extend_pressure, 0u, 0xffu);
     
     /* system_enable: bit 16, 1 bit */
     dst_p[2] |= pack_left_shift_u8(src_p->system_enable, 0u, 0x01u);
@@ -341,8 +344,11 @@ int tsmaster_control2_pack(
     /* set_bypass_ratio: bit 41, 6 bits */
     dst_p[5] |= pack_left_shift_u8(src_p->set_bypass_ratio, 1u, 0x7eu);
     
-    /* set_second_workDone_time: bit 48, 8 bits */
-    dst_p[6] |= pack_left_shift_u8(src_p->set_second_workDone_time, 0u, 0xffu);
+    /* set_retract_pressure: bit 48, 7 bits */
+    dst_p[6] |= pack_left_shift_u8(src_p->set_retract_pressure, 0u, 0x7fu);
+
+    /* set_retract_time: bit 56, 5 bits */
+    dst_p[7] |= pack_left_shift_u8(src_p->set_retract_time, 0u, 0x1fu);
     
     return (8);
 }
@@ -360,14 +366,17 @@ int tsmaster_control2_unpack(
         return (-EINVAL);
     }
     
-    /* set_second_workDone_time: bit 48, 8 bits */
-    dst_p->set_second_workDone_time = unpack_right_shift_u8(src_p[6], 0u, 0xffu);
+    /* set_retract_pressure: bit 48, 7 bits */
+    dst_p->set_retract_pressure = unpack_right_shift_u8(src_p[6], 0u, 0x7fu);
 
-    /* set_second_oilSuction_time: bit 8, 8 bits */
-    dst_p->set_second_oilSuction_time = unpack_right_shift_u8(src_p[1], 0u, 0xffu);
+    /* set_extend_pressure: bit 8, 8 bits */
+    dst_p->set_extend_pressure = unpack_right_shift_u8(src_p[1], 0u, 0xffu);
 
-    /* set_second_manual: bit 0, 1 bit */
-    dst_p->set_second_manual = unpack_right_shift_u8(src_p[0], 0u, 0x01u);
+    /* set_extend_time: bit 1, 6 bits */
+    dst_p->set_extend_time = unpack_right_shift_u8(src_p[0], 1u, 0x7eu);
+
+    /* auto_mode: bit 0, 1 bit */
+    dst_p->auto_mode = unpack_right_shift_u8(src_p[0], 0u, 0x01u);
     
     /* system_enable: bit 16, 1 bit */
     dst_p->system_enable = unpack_right_shift_u8(src_p[2], 0u, 0x01u);
@@ -383,6 +392,9 @@ int tsmaster_control2_unpack(
     
     /* set_bypass_ratio: bit 41, 6 bits */
     dst_p->set_bypass_ratio = unpack_right_shift_u8(src_p[5], 1u, 0x7eu);
+
+    /* set_retract_time: bit 56, 5 bits */
+    dst_p->set_retract_time = unpack_right_shift_u8(src_p[7], 0u, 0x1fu);
     
     return (0);
 }
@@ -863,36 +875,53 @@ bool tsmaster_control_bypass_off_is_in_range(uint8_t value)
  * tsmaster_control2 Encode/Decode Functions
  * ======================================================================== */
 
-uint8_t tsmaster_control2_set_second_manual_encode(double value)
+uint8_t tsmaster_control2_auto_mode_encode(double value)
 {
     return (uint8_t)(value);
 }
 
-double tsmaster_control2_set_second_manual_decode(uint8_t value)
+double tsmaster_control2_auto_mode_decode(uint8_t value)
 {
     return ((double)value);
 }
 
-bool tsmaster_control2_set_second_manual_is_in_range(uint8_t value)
+bool tsmaster_control2_auto_mode_is_in_range(uint8_t value)
 {
     return (value <= 1u);
 }
 
-uint8_t tsmaster_control2_set_second_oilSuction_time_encode(double value)
+uint8_t tsmaster_control2_set_extend_time_encode(double value)
 {
     if (value < 0.0) value = 0.0;
-    if (value > 10.0) value = 10.0;
+    if (value > 6.3) value = 6.3;
     return (uint8_t)(value / 0.1);
 }
 
-double tsmaster_control2_set_second_oilSuction_time_decode(uint8_t value)
+double tsmaster_control2_set_extend_time_decode(uint8_t value)
 {
     return ((double)value * 0.1);
 }
 
-bool tsmaster_control2_set_second_oilSuction_time_is_in_range(uint8_t value)
+bool tsmaster_control2_set_extend_time_is_in_range(uint8_t value)
 {
-    return (value <= 100u);
+    return (value <= 63u);
+}
+
+uint8_t tsmaster_control2_set_extend_pressure_encode(double value)
+{
+    if (value < 0.0) value = 0.0;
+    if (value > 25.5) value = 25.5;
+    return (uint8_t)(value / 0.1);
+}
+
+double tsmaster_control2_set_extend_pressure_decode(uint8_t value)
+{
+    return ((double)value * 0.1);
+}
+
+bool tsmaster_control2_set_extend_pressure_is_in_range(uint8_t value)
+{
+    return (value <= 255u);
 }
 
 uint8_t tsmaster_control2_system_enable_encode(double value)
@@ -970,19 +999,36 @@ bool tsmaster_control2_set_bypass_ratio_is_in_range(uint8_t value)
     return (value <= 50u);
 }
 
-uint8_t tsmaster_control2_set_second_workDone_time_encode(double value)
+uint8_t tsmaster_control2_set_retract_pressure_encode(double value)
 {
     if (value < 0.0) value = 0.0;
-    if (value > 10.0) value = 10.0;
+    if (value > 12.7) value = 12.7;
     return (uint8_t)(value / 0.1);
 }
 
-double tsmaster_control2_set_second_workDone_time_decode(uint8_t value)
+double tsmaster_control2_set_retract_pressure_decode(uint8_t value)
 {
     return ((double)value * 0.1);
 }
 
-bool tsmaster_control2_set_second_workDone_time_is_in_range(uint8_t value)
+bool tsmaster_control2_set_retract_pressure_is_in_range(uint8_t value)
 {
-    return (value <= 100u);
+    return (value <= 127u);
+}
+
+uint8_t tsmaster_control2_set_retract_time_encode(double value)
+{
+    if (value < 0.0) value = 0.0;
+    if (value > 3.1) value = 3.1;
+    return (uint8_t)(value / 0.1);
+}
+
+double tsmaster_control2_set_retract_time_decode(uint8_t value)
+{
+    return ((double)value * 0.1);
+}
+
+bool tsmaster_control2_set_retract_time_is_in_range(uint8_t value)
+{
+    return (value <= 31u);
 }

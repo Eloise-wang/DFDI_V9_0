@@ -91,15 +91,17 @@ void CAN_MessageHandler_RxCallback(uint32_t msg_id, const uint8_t* data, uint8_t
             // 更新参数到 hydraulic_control 模块
             control_params_t control_params;
             control_params.system_enable = g_pc_parameters.system_enable;
+            control_params.auto_mode = g_pc_parameters.auto_mode;
             control_params.set_bypass_ratio = (float)g_pc_parameters.set_bypass_ratio;
             control_params.set_bypass_initial_decline_time = (float)g_pc_parameters.set_bypass_initial_decline_time;
             control_params.set_rev_start_oilP_max = (float)g_pc_parameters.set_rev_start_oilP_max;
             control_params.set_rev_start_oilP_min = (float)g_pc_parameters.set_rev_start_oilP_min;
             control_params.set_first_fix_freq_time_on = (float)g_pc_parameters.set_first_fix_freq_time_on;
             control_params.set_first_fix_freq_time_off = (float)g_pc_parameters.set_first_fix_freq_time_off;
-            control_params.set_second_workDone_time = (float)g_pc_parameters.set_second_workDone_time;
-            control_params.set_second_oilSuction_time = (float)g_pc_parameters.set_second_oilSuction_time;
-            control_params.set_second_manual = g_pc_parameters.set_second_manual;
+            control_params.set_extend_time = (float)g_pc_parameters.set_extend_time;
+            control_params.set_extend_pressure = (float)g_pc_parameters.set_extend_pressure;
+            control_params.set_retract_time = (float)g_pc_parameters.set_retract_time;
+            control_params.set_retract_pressure = (float)g_pc_parameters.set_retract_pressure;
             control_params.set_cooler_temperature_on = (float)g_pc_parameters.set_cooler_temp_on;
             control_params.set_cooler_temperature_off = (float)g_pc_parameters.set_cooler_temp_off;
             control_params.bypass_off = g_pc_parameters.bypass_off;
@@ -140,13 +142,23 @@ void CAN_MessageHandler_RxCallback(uint32_t msg_id, const uint8_t* data, uint8_t
                 if (g_pc_parameters.set_bypass_ratio < 0.0) g_pc_parameters.set_bypass_ratio = 0.0;
                 if (g_pc_parameters.set_bypass_ratio > 50.0) g_pc_parameters.set_bypass_ratio = 50.0;
                 
-                g_pc_parameters.set_second_manual = (tsmaster_control2_set_second_manual_decode(ctrl2_msg.set_second_manual) != 0.0);
-                g_pc_parameters.set_second_oilSuction_time = tsmaster_control2_set_second_oilSuction_time_decode(ctrl2_msg.set_second_oilSuction_time);
-                g_pc_parameters.set_second_workDone_time = tsmaster_control2_set_second_workDone_time_decode(ctrl2_msg.set_second_workDone_time);
-                if (g_pc_parameters.set_second_oilSuction_time < 0.0) g_pc_parameters.set_second_oilSuction_time = 0.0;
-                if (g_pc_parameters.set_second_oilSuction_time > 10.0) g_pc_parameters.set_second_oilSuction_time = 10.0;
-                if (g_pc_parameters.set_second_workDone_time < 0.0) g_pc_parameters.set_second_workDone_time = 0.0;
-                if (g_pc_parameters.set_second_workDone_time > 10.0) g_pc_parameters.set_second_workDone_time = 10.0;
+                g_pc_parameters.auto_mode = (tsmaster_control2_auto_mode_decode(ctrl2_msg.auto_mode) != 0.0);
+                
+                g_pc_parameters.set_extend_time = tsmaster_control2_set_extend_time_decode(ctrl2_msg.set_extend_time);
+                if (g_pc_parameters.set_extend_time < 0.0) g_pc_parameters.set_extend_time = 0.0;
+                if (g_pc_parameters.set_extend_time > 6.3) g_pc_parameters.set_extend_time = 6.3;
+                
+                g_pc_parameters.set_extend_pressure = tsmaster_control2_set_extend_pressure_decode(ctrl2_msg.set_extend_pressure);
+                if (g_pc_parameters.set_extend_pressure < 0.0) g_pc_parameters.set_extend_pressure = 0.0;
+                if (g_pc_parameters.set_extend_pressure > 25.5) g_pc_parameters.set_extend_pressure = 25.5;
+                
+                g_pc_parameters.set_retract_pressure = tsmaster_control2_set_retract_pressure_decode(ctrl2_msg.set_retract_pressure);
+                if (g_pc_parameters.set_retract_pressure < 0.0) g_pc_parameters.set_retract_pressure = 0.0;
+                if (g_pc_parameters.set_retract_pressure > 12.7) g_pc_parameters.set_retract_pressure = 12.7;
+                
+                g_pc_parameters.set_retract_time = tsmaster_control2_set_retract_time_decode(ctrl2_msg.set_retract_time);
+                if (g_pc_parameters.set_retract_time < 0.0) g_pc_parameters.set_retract_time = 0.0;
+                if (g_pc_parameters.set_retract_time > 3.1) g_pc_parameters.set_retract_time = 3.1;
                 
                 g_pc_parameters.set_cooler_temp_on = tsmaster_control2_set_cooler_temperature_on_decode(ctrl2_msg.set_cooler_temperature_on);
                 g_pc_parameters.set_cooler_temp_off = tsmaster_control2_set_cooler_temperature_off_decode(ctrl2_msg.set_cooler_temperature_off);
@@ -157,15 +169,17 @@ void CAN_MessageHandler_RxCallback(uint32_t msg_id, const uint8_t* data, uint8_t
                 // 更新参数到 hydraulic_control 模块
                 control_params_t control_params;
                 control_params.system_enable = g_pc_parameters.system_enable;
+                control_params.auto_mode = g_pc_parameters.auto_mode;
                 control_params.set_bypass_ratio = (float)g_pc_parameters.set_bypass_ratio;
                 control_params.set_bypass_initial_decline_time = (float)g_pc_parameters.set_bypass_initial_decline_time;
                 control_params.set_rev_start_oilP_max = (float)g_pc_parameters.set_rev_start_oilP_max;
                 control_params.set_rev_start_oilP_min = (float)g_pc_parameters.set_rev_start_oilP_min;
                 control_params.set_first_fix_freq_time_on = (float)g_pc_parameters.set_first_fix_freq_time_on;
                 control_params.set_first_fix_freq_time_off = (float)g_pc_parameters.set_first_fix_freq_time_off;
-                control_params.set_second_workDone_time = (float)g_pc_parameters.set_second_workDone_time;
-                control_params.set_second_oilSuction_time = (float)g_pc_parameters.set_second_oilSuction_time;
-                control_params.set_second_manual = g_pc_parameters.set_second_manual;
+                control_params.set_extend_time = (float)g_pc_parameters.set_extend_time;
+                control_params.set_extend_pressure = (float)g_pc_parameters.set_extend_pressure;
+                control_params.set_retract_time = (float)g_pc_parameters.set_retract_time;
+                control_params.set_retract_pressure = (float)g_pc_parameters.set_retract_pressure;
                 control_params.set_cooler_temperature_on = (float)g_pc_parameters.set_cooler_temp_on;
                 control_params.set_cooler_temperature_off = (float)g_pc_parameters.set_cooler_temp_off;
                 control_params.bypass_off = g_pc_parameters.bypass_off;

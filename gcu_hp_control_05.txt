@@ -1,0 +1,120 @@
+void device_status(unsigned char* buff)
+{
+    unsigned int rData;
+
+    /* packing signal bypass_ratio*/
+    rData = (unsigned int)(bypass_ratio - (0));
+    buff[0u]  = ((unsigned char)(rData << 0u)) & 0x3Fu;
+
+    /* packing signal oil_pressure*/
+    rData = (unsigned int)((oil_pressure - (0)) * 10.00f);
+    buff[0u] |= ((unsigned char)(rData << 6u)) & 0xC0u;
+    buff[1u]  = ((unsigned char)(rData >> 2u)) & 0x3Fu;
+
+    /* packing signal oil_temperature*/
+    rData = (unsigned int)((oil_temperature - (-40)) * 10.00f);
+    buff[1u] |= ((unsigned char)(rData << 6u)) & 0xC0u;
+    buff[2u]  = ((unsigned char)(rData >> 2u));
+    buff[3u]  = ((unsigned char)(rData >> 10u)) & 0x03u;
+
+    /* packing signal LNG_temperature*/
+    rData = (unsigned int)((LNG_temperature - (-40)) * 10.00f);
+    buff[3u] |= ((unsigned char)(rData << 2u)) & 0xFCu;
+    buff[4u]  = ((unsigned char)(rData >> 6u)) & 0x3Fu;
+
+    /* packing signal LNG_pressure*/
+    rData = (unsigned int)((LNG_pressure - (0)) * 10.00f);
+    buff[4u] |= ((unsigned char)(rData << 6u)) & 0xC0u;
+    buff[5u]  = ((unsigned char)(rData >> 2u));
+
+    /* packing signal rev_freq*/
+    rData = (unsigned int)(rev_freq - (0));
+    buff[6u]  = ((unsigned char)(rData << 0u)) & 0xFFu;
+
+    /* packing signal rev_enable*/
+    rData = (unsigned int)(rev_enable - (0));
+    buff[7u]  = ((unsigned char)(rData << 0u)) & 0x01u;
+
+    /* packing signal cooler_enable*/
+    rData = (unsigned int)(cooler_enable - (0));
+    buff[7u] |= ((unsigned char)(rData << 1u)) & 0x02u;
+
+    /* packing signal debug*/
+    rData = (unsigned int)(debug - (0));
+    buff[7u] |= ((unsigned char)(rData << 2u)) & 0x04u;
+}
+void tsmaster_control(unsigned char* buff)
+{
+    unsigned int rData;
+
+    /* packing signal bypass_off*/
+    rData = ((unsigned int)buff[5u] & 0x40u) >> 6u;
+    bypass_off = rData + (0);
+
+    /* packing signal set_bypass_initial_decline_time*/
+    rData = ((unsigned int)buff[0u] & 0x3Fu) >> 0u;
+    set_bypass_initial_decline_time = rData + (0);
+
+    /* packing signal set_rev_start_oilP_max*/
+    rData = ((unsigned int)buff[0u] & 0xC0u) >> 6u;
+    rData |= ((unsigned int)buff[1u] & 0x3Fu) << 2u;
+    set_rev_start_oilP_max = (rData * 0.10f) + (0);
+
+    /* packing signal set_rev_start_oilP_min*/
+    rData = ((unsigned int)buff[1u] & 0xC0u) >> 6u;
+    rData |= ((unsigned int)buff[2u] & 0x3Fu) << 2u;
+    set_rev_start_oilP_min = (rData * 0.10f) + (0);
+
+    /* packing signal set_first_fix_freq_time_on*/
+    rData = ((unsigned int)buff[2u] & 0xC0u) >> 6u;
+    rData |= ((unsigned int)buff[3u] & 0x3Fu) << 2u;
+    set_first_fix_freq_time_on = (rData * 0.10f) + (0);
+
+    /* packing signal set_first_fix_freq_time_off*/
+    rData = ((unsigned int)buff[3u] & 0xC0u) >> 6u;
+    rData |= ((unsigned int)buff[4u] & 0x3Fu) << 2u;
+    set_first_fix_freq_time_off = (rData * 0.10f) + (0);
+}
+void tsmaster_control2(unsigned char* buff)
+{
+    unsigned int rData;
+
+    /* packing signal set_retract_time*/
+    rData = ((unsigned int)buff[7u] & 0x1Fu) >> 0u;
+    set_retract_time = (rData * 0.10f) + (0);
+
+    /* packing signal set_retract_pressure*/
+    rData = ((unsigned int)buff[6u] & 0x7Fu) >> 0u;
+    set_retract_pressure = (rData * 0.10f) + (0);
+
+    /* packing signal set_extend_time*/
+    rData = ((unsigned int)buff[0u] & 0x7Eu) >> 1u;
+    set_extend_time = (rData * 0.10f) + (0);
+
+    /* packing signal set_extend_pressure*/
+    rData = ((unsigned int)buff[1u] & 0xFFu) >> 0u;
+    set_extend_pressure = (rData * 0.10f) + (0);
+
+    /* packing signal auto_mode*/
+    rData = ((unsigned int)buff[0u] & 0x01u) >> 0u;
+    auto_mode = rData + (0);
+
+    /* packing signal system_enable*/
+    rData = ((unsigned int)buff[2u] & 0x01u) >> 0u;
+    system_enable = rData + (0);
+
+    /* packing signal set_cooler_temperature_on*/
+    rData = ((unsigned int)buff[2u] & 0xFEu) >> 1u;
+    rData |= ((unsigned int)buff[3u] & 0x1Fu) << 7u;
+    set_cooler_temperature_on = (rData * 0.10f) + (-40);
+
+    /* packing signal set_cooler_temperature_off*/
+    rData = ((unsigned int)buff[3u] & 0xE0u) >> 5u;
+    rData |= ((unsigned int)buff[4u] << 3u);
+    rData |= ((unsigned int)buff[5u] & 0x01u) << 11u;
+    set_cooler_temperature_off = (rData * 0.10f) + (-40);
+
+    /* packing signal set_bypass_ratio*/
+    rData = ((unsigned int)buff[5u] & 0x7Eu) >> 1u;
+    set_bypass_ratio = rData + (0);
+}
